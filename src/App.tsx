@@ -15,6 +15,7 @@ import { Board } from '@/kanban/Board'
 import { StatusBar } from '@/ui/StatusBar'
 import { ToastProvider } from '@/ui/Toast'
 import { BomPanel } from '@/bom/BomPanel'
+import { MachinesPanel } from '@/machines/MachinesPanel'
 import type { Database } from '@/db/types'
 
 type ActivePanel = 'bom' | 'machines' | 'fileVault' | 'serial' | 'pinout' | null
@@ -27,11 +28,7 @@ function PanelBOM() {
 }
 
 function PanelMachines() {
-  return (
-    <div style={{ padding: '16px', color: 'var(--color-text-secondary)', fontSize: '13px' }}>
-      Machines panel coming soon.
-    </div>
-  )
+  return <MachinesPanel />
 }
 
 function PanelFileVault() {

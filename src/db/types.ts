@@ -91,6 +91,7 @@ export interface Database {
           type: string
           total_hours_logged: number
           maintenance_threshold_hours: number
+          hours_at_last_maintenance: number
           last_maintenance_at: string | null
           is_locked: boolean
         }
