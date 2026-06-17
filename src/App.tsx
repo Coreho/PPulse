@@ -7,6 +7,7 @@ import {
   Terminal,
   Circuitry,
   Circle,
+  Timer,
 } from '@phosphor-icons/react'
 import { flushQueue } from '@/db/idb'
 import { supabase } from '@/db/supabase'
@@ -22,9 +23,10 @@ import { PinoutPanel } from '@/pinout/PinoutPanel'
 import { PinoutOverlay } from '@/pinout/PinoutOverlay'
 import { SerialMonitorPanel } from '@/hardware/SerialMonitorPanel'
 import { FileVaultPanel } from '@/hardware/FileVaultPanel'
+import { TimerPanel } from '@/timers/TimerPanel'
 import type { Database } from '@/db/types'
 
-type ActivePanel = 'bom' | 'machines' | 'fileVault' | 'serial' | 'pinout' | null
+type ActivePanel = 'bom' | 'machines' | 'fileVault' | 'serial' | 'pinout' | 'timers' | null
 type Project = Database['public']['Tables']['projects']['Row']
 
 // ---- Panel stubs (placeholder content until Agent B builds them) ----
@@ -49,12 +51,17 @@ function PanelPinout() {
   return <PinoutPanel />
 }
 
+function PanelTimers() {
+  return <TimerPanel />
+}
+
 const PANEL_COMPONENTS: Record<NonNullable<ActivePanel>, React.ComponentType> = {
   bom: PanelBOM,
   machines: PanelMachines,
   fileVault: PanelFileVault,
   serial: PanelSerial,
   pinout: PanelPinout,
+  timers: PanelTimers,
 }
 
 const PANEL_TITLES: Record<NonNullable<ActivePanel>, string> = {
@@ -63,6 +70,7 @@ const PANEL_TITLES: Record<NonNullable<ActivePanel>, string> = {
   fileVault: 'File Vault',
   serial: 'Serial Monitor',
   pinout: 'Pinout Mapper',
+  timers: 'Print Timers',
 }
 
 // ---- NavButton ----
@@ -391,6 +399,7 @@ export default function App() {
     { icon: <FolderOpen size={16} />, label: 'File Vault', panel: 'fileVault' },
     { icon: <Terminal size={16} />, label: 'Serial Monitor', panel: 'serial' },
     { icon: <Circuitry size={16} />, label: 'Pinout Mapper', panel: 'pinout' },
+    { icon: <Timer size={16} />, label: 'Timers', panel: 'timers' },
   ]
 
   return (
