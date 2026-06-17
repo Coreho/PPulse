@@ -26,18 +26,30 @@ interface PPSchema extends DBSchema {
       subscription: PushSubscriptionJSON
     }
   }
+  vault_entries: {
+    key: string
+    value: {
+      projectId: string
+      entries: import('../hardware/fileVault').VaultEntry[]
+    }
+  }
 }
 
 let _db: IDBPDatabase<PPSchema> | null = null
 
 export async function getDB(): Promise<IDBPDatabase<PPSchema>> {
   if (_db) return _db
-  _db = await openDB<PPSchema>('pp-workspace', 1, {
-    upgrade(db) {
-      const sq = db.createObjectStore('sync_queue', { keyPath: 'id', autoIncrement: true })
-      sq.createIndex('by_table', 'table')
-      db.createObjectStore('fs_handles', { keyPath: 'key' })
-      db.createObjectStore('push_subscriptions', { keyPath: 'project_id' })
+  _db = await openDB<PPSchema>('pp-workspace', 2, {
+    upgrade(db, oldVersion) {
+      if (oldVersion < 1) {
+        const sq = db.createObjectStore('sync_queue', { keyPath: 'id', autoIncrement: true })
+        sq.createIndex('by_table', 'table')
+        db.createObjectStore('fs_handles', { keyPath: 'key' })
+        db.createObjectStore('push_subscriptions', { keyPath: 'project_id' })
+      }
+      if (oldVersion < 2) {
+        db.createObjectStore('vault_entries', { keyPath: 'projectId' })
+      }
     },
   })
   return _db

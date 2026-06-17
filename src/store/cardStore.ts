@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { supabase } from '@/db/supabase'
 import { enqueueMutation } from '@/db/idb'
 import type { Database, CardColumn, StatusFlag } from '@/db/types'
+import { useMachineStore } from '@/machines/machineStore'
 
 type Card = Database['public']['Tables']['cards']['Row']
 
@@ -70,6 +71,13 @@ export const useCardStore = create<CardStore>((set, get) => ({
     }
     if (previousColumn === 'in_progress' && column !== 'in_progress') {
       updates.machine_session_start = null
+      // Accumulate machine hours from the session
+      if (card.machine_id && card.machine_session_start) {
+        const hours = (Date.now() - new Date(card.machine_session_start).getTime()) / 3_600_000
+        if (hours > 0) {
+          void useMachineStore.getState().logHours(card.machine_id, hours)
+        }
+      }
     }
 
     set(s => ({ cards: s.cards.map(c => c.id === id ? { ...c, ...updates } : c) }))

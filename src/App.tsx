@@ -20,6 +20,8 @@ import { BomPanel } from '@/bom/BomPanel'
 import { MachinesPanel } from '@/machines/MachinesPanel'
 import { PinoutPanel } from '@/pinout/PinoutPanel'
 import { PinoutOverlay } from '@/pinout/PinoutOverlay'
+import { SerialMonitorPanel } from '@/hardware/SerialMonitorPanel'
+import { FileVaultPanel } from '@/hardware/FileVaultPanel'
 import type { Database } from '@/db/types'
 
 type ActivePanel = 'bom' | 'machines' | 'fileVault' | 'serial' | 'pinout' | null
@@ -36,19 +38,11 @@ function PanelMachines() {
 }
 
 function PanelFileVault() {
-  return (
-    <div style={{ padding: '16px', color: 'var(--color-text-secondary)', fontSize: '13px' }}>
-      File Vault panel coming soon.
-    </div>
-  )
+  return <FileVaultPanel />
 }
 
 function PanelSerial() {
-  return (
-    <div style={{ padding: '16px', color: 'var(--color-text-secondary)', fontSize: '13px' }}>
-      Serial Monitor panel coming soon.
-    </div>
-  )
+  return <SerialMonitorPanel />
 }
 
 function PanelPinout() {
