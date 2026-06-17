@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    ports:
+      - "80:80"
+    env_file: .env.production
+    restart: unless-stopped
+
+  push-relay:
+    build: ./push-relay
+    ports:
+      - "8001:8001"
+    env_file: .env.production
+    restart: unless-stopped
