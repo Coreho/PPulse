@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '@/db/supabase'
+import { enqueueMutation } from '@/db/idb'
 import type { Database } from '@/db/types'
 
 type Project = Database['public']['Tables']['projects']['Row']
@@ -47,6 +48,18 @@ export const useProjectStore = create<ProjectStore>((set) => ({
         ? { ...s.activeProject, scratchpad_content: content, updated_at: now }
         : s.activeProject,
     }))
-    await supabase.from('projects').update({ scratchpad_content: content, updated_at: now }).eq('id', projectId)
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ scratchpad_content: content, updated_at: now })
+        .eq('id', projectId)
+      if (error) throw error
+    } catch {
+      await enqueueMutation('projects', 'upsert', {
+        id: projectId,
+        scratchpad_content: content,
+        updated_at: now,
+      })
+    }
   },
 }))

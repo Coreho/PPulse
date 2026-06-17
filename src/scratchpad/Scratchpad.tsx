@@ -10,6 +10,8 @@ import { EditorState, StateField, StateEffect, RangeSetBuilder } from '@codemirr
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { history, defaultKeymap, historyKeymap } from '@codemirror/commands'
+import { keymap } from '@codemirror/view'
+import { GFM } from '@lezer/markdown'
 import { useCardStore } from '@/store/cardStore'
 import { useProjectStore } from '@/store/projectStore'
 import { useUIStore } from '@/store/uiStore'
@@ -210,11 +212,12 @@ export function Scratchpad({ projectId, initialContent = '' }: ScratchpadProps) 
         const content = update.state.doc.toString()
         debouncedSave(content)
 
-        // Detect @pinout typed
-        const text = update.state.doc.toString()
+        // Detect @pinout typed — fire once when token is completed
         const selection = update.state.selection.main
         const lineText = update.state.doc.lineAt(selection.head).text
-        if (lineText.includes('@pinout')) {
+        const cursorCol = selection.head - update.state.doc.lineAt(selection.head).from
+        const textUpToCursor = lineText.slice(0, cursorCol)
+        if (textUpToCursor.endsWith('@pinout')) {
           openPinout(null)
         }
 
@@ -258,7 +261,8 @@ export function Scratchpad({ projectId, initialContent = '' }: ScratchpadProps) 
       doc: initialContent,
       extensions: [
         history(),
-        markdown({ base: markdownLanguage, codeLanguages: languages }),
+        markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [GFM] }),
+        keymap.of([...defaultKeymap, ...historyKeymap]),
         ppTheme,
         tagDecorationField,
         updateListener,
@@ -273,10 +277,13 @@ export function Scratchpad({ projectId, initialContent = '' }: ScratchpadProps) 
     })
 
     editorRef.current = view
-    bridgeRef.current = new SyncBridge(view)
+    const bridge = new SyncBridge(view)
+    bridgeRef.current = bridge
+    useCardStore.getState().registerBridgeUpdater((tag, title) => bridge.updateLine(tag, title))
 
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      useCardStore.getState().registerBridgeUpdater(null)
       bridgeRef.current?.destroy()
       view.destroy()
       editorRef.current = null
@@ -309,7 +316,7 @@ export function Scratchpad({ projectId, initialContent = '' }: ScratchpadProps) 
     >
       <div
         ref={containerRef}
-        style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}
+        style={{ flex: 1, minHeight: 0, overflow: 'auto' }}
         aria-label="Scratchpad editor"
       />
 

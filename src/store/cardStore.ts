@@ -8,6 +8,7 @@ type Card = Database['public']['Tables']['cards']['Row']
 interface CardStore {
   cards: Card[]
   loading: boolean
+  _bridgeUpdater: ((tag: string, title: string) => void) | null
 
   loadCards: (projectId: string) => Promise<void>
   addCard: (card: Database['public']['Tables']['cards']['Insert']) => Promise<void>
@@ -16,12 +17,14 @@ interface CardStore {
   deleteCard: (id: string) => Promise<void>
   addStatusFlag: (id: string, flag: StatusFlag) => void
   removeStatusFlag: (id: string, flag: StatusFlag) => void
-  updateCardTitle: (scratchpadTag: string, title: string) => void
+  updateCardTitle: (scratchpadTag: string, title: string) => Promise<void>
+  registerBridgeUpdater: (fn: ((tag: string, title: string) => void) | null) => void
 }
 
 export const useCardStore = create<CardStore>((set, get) => ({
   cards: [],
   loading: false,
+  _bridgeUpdater: null,
 
   loadCards: async (projectId) => {
     set({ loading: true })
@@ -97,7 +100,7 @@ export const useCardStore = create<CardStore>((set, get) => ({
     }))
   },
 
-  updateCardTitle: (scratchpadTag, title) => {
+  updateCardTitle: async (scratchpadTag, title) => {
     const now = new Date().toISOString()
     const card = get().cards.find(c => c.scratchpad_tag === scratchpadTag)
     if (!card || card.title === title) return
@@ -106,6 +109,17 @@ export const useCardStore = create<CardStore>((set, get) => ({
         c.scratchpad_tag === scratchpadTag ? { ...c, title, updated_at: now } : c,
       ),
     }))
-    supabase.from('cards').update({ title, updated_at: now }).eq('scratchpad_tag', scratchpadTag)
+    get()._bridgeUpdater?.(scratchpadTag, title)
+    try {
+      const { error } = await supabase
+        .from('cards')
+        .update({ title, updated_at: now })
+        .eq('scratchpad_tag', scratchpadTag)
+      if (error) throw error
+    } catch {
+      await enqueueMutation('cards', 'upsert', { scratchpad_tag: scratchpadTag, title, updated_at: now })
+    }
   },
+
+  registerBridgeUpdater: (fn) => set({ _bridgeUpdater: fn }),
 }))

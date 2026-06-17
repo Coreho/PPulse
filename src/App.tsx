@@ -8,6 +8,8 @@ import {
   Circuitry,
   Circle,
 } from '@phosphor-icons/react'
+import { flushQueue } from '@/db/idb'
+import { supabase } from '@/db/supabase'
 import { useProjectStore } from '@/store/projectStore'
 import { useUIStore } from '@/store/uiStore'
 import { Scratchpad } from '@/scratchpad/Scratchpad'
@@ -362,6 +364,20 @@ export default function App() {
       window.removeEventListener('offline', handleOffline)
     }
   }, [setOnline])
+
+  useEffect(() => {
+    const handleOnline = () => {
+      flushQueue(async (table, op, payload) => {
+        if (op === 'upsert') {
+          await supabase.from(table as 'projects' | 'cards').upsert(payload as never)
+        } else {
+          await supabase.from(table as 'projects' | 'cards').delete().eq('id', (payload as { id: string }).id)
+        }
+      })
+    }
+    window.addEventListener('online', handleOnline)
+    return () => window.removeEventListener('online', handleOnline)
+  }, [])
 
   useEffect(() => {
     loadProjects().then(async () => {

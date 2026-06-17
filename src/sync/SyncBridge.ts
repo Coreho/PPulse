@@ -1,5 +1,4 @@
 import { EditorView, ViewUpdate } from '@codemirror/view'
-import { useEffect, useRef } from 'react'
 import { unified } from 'unified'
 import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
@@ -17,77 +16,44 @@ function isParent(node: Node): node is Parent {
   return 'children' in node
 }
 
+function extractPrecedingText(parent: Parent, index: number): string {
+  if (index === 0) return ''
+  const preceding = parent.children[index - 1]
+  if ('children' in preceding) {
+    const textNode = (preceding as Parent).children.find(
+      n => 'value' in n && typeof (n as { value: unknown }).value === 'string',
+    )
+    if (textNode && 'value' in textNode) return String((textNode as { value: string }).value).trim()
+  } else if ('value' in preceding) {
+    return String((preceding as { value: string }).value).trim()
+  }
+  return ''
+}
+
 function walkAst(tree: Root): AstWalkResult[] {
   const results: AstWalkResult[] = []
 
-  function visit(node: Node): void {
-    if (node.type === 'html') {
-      const htmlNode = node as { type: 'html'; value: string }
-      const match = TAG_REGEX.exec(htmlNode.value)
-      if (match) {
-        results.push({ uuid: match[1], precedingText: '' })
-      }
-    }
-
-    if (isParent(node)) {
-      for (let i = 0; i < node.children.length; i++) {
-        const child = node.children[i]
-        if (child.type === 'html') {
-          const htmlNode = child as { type: 'html'; value: string }
-          const match = TAG_REGEX.exec(htmlNode.value)
-          if (match) {
-            // Get text from preceding sibling
-            const preceding = i > 0 ? node.children[i - 1] : null
-            let precedingText = ''
-            if (preceding && 'value' in preceding && typeof (preceding as { value: unknown }).value === 'string') {
-              precedingText = ((preceding as { value: string }).value).trim()
-            }
-            // Update last result with correct preceding text (avoid duplicate)
-            const existing = results.find(r => r.uuid === match[1])
-            if (existing) {
-              existing.precedingText = precedingText
-            } else {
-              results.push({ uuid: match[1], precedingText })
-            }
+  function visit(parent: Parent): void {
+    for (let i = 0; i < parent.children.length; i++) {
+      const child = parent.children[i]
+      if (child.type === 'html') {
+        const match = TAG_REGEX.exec((child as { type: 'html'; value: string }).value)
+        if (match) {
+          const uuid = match[1]
+          const precedingText = extractPrecedingText(parent, i)
+          const existing = results.find(r => r.uuid === uuid)
+          if (existing) {
+            existing.precedingText = precedingText
+          } else {
+            results.push({ uuid, precedingText })
           }
         }
-        visit(child)
       }
+      if (isParent(child)) visit(child)
     }
   }
 
-  // Walk top-level
-  for (let i = 0; i < tree.children.length; i++) {
-    const child = tree.children[i]
-    if (child.type === 'html') {
-      const htmlNode = child as { type: 'html'; value: string }
-      const match = TAG_REGEX.exec(htmlNode.value)
-      if (match) {
-        const preceding = i > 0 ? tree.children[i - 1] : null
-        let precedingText = ''
-        if (preceding) {
-          // Extract text from paragraph or heading
-          if ('children' in preceding) {
-            const textNode = (preceding as Parent).children.find(
-              n => 'value' in n && typeof (n as { value: unknown }).value === 'string',
-            )
-            if (textNode && 'value' in textNode) {
-              precedingText = String((textNode as { value: string }).value).trim()
-            }
-          } else if ('value' in preceding) {
-            precedingText = String((preceding as { value: string }).value).trim()
-          }
-        }
-        const existing = results.find(r => r.uuid === match[1])
-        if (existing) {
-          existing.precedingText = precedingText
-        } else {
-          results.push({ uuid: match[1], precedingText })
-        }
-      }
-    }
-  }
-
+  visit(tree)
   return results
 }
 
@@ -173,32 +139,3 @@ export class SyncBridge {
   }
 }
 
-export function useSyncBridge(editorView: EditorView | null): void {
-  const bridgeRef = useRef<SyncBridge | null>(null)
-
-  useEffect(() => {
-    if (!editorView) return
-
-    const bridge = new SyncBridge(editorView)
-    bridgeRef.current = bridge
-
-    // Listen to editor updates by extending the editor
-    const extension = EditorView.updateListener.of((update: ViewUpdate) => {
-      bridge.handleUpdate(update)
-    })
-
-    editorView.dispatch({
-      effects: [],
-    })
-
-    // Since we can't add extensions after init via dispatch alone,
-    // the bridge's handleUpdate is called from the Scratchpad component
-    // via the updateListener extension. Store ref for external access.
-    bridgeRef.current = bridge
-
-    return () => {
-      bridge.destroy()
-      bridgeRef.current = null
-    }
-  }, [editorView])
-}
