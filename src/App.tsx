@@ -18,6 +18,8 @@ import { StatusBar } from '@/ui/StatusBar'
 import { ToastProvider } from '@/ui/Toast'
 import { BomPanel } from '@/bom/BomPanel'
 import { MachinesPanel } from '@/machines/MachinesPanel'
+import { PinoutPanel } from '@/pinout/PinoutPanel'
+import { PinoutOverlay } from '@/pinout/PinoutOverlay'
 import type { Database } from '@/db/types'
 
 type ActivePanel = 'bom' | 'machines' | 'fileVault' | 'serial' | 'pinout' | null
@@ -50,11 +52,7 @@ function PanelSerial() {
 }
 
 function PanelPinout() {
-  return (
-    <div style={{ padding: '16px', color: 'var(--color-text-secondary)', fontSize: '13px' }}>
-      Pinout Mapper panel coming soon.
-    </div>
-  )
+  return <PinoutPanel />
 }
 
 const PANEL_COMPONENTS: Record<NonNullable<ActivePanel>, React.ComponentType> = {
@@ -352,7 +350,7 @@ function SideDrawer({ panel, onClose }: SideDrawerProps) {
 
 export default function App() {
   const { projects, activeProject, loadProjects, createProject, setActiveProject } = useProjectStore()
-  const { activePanel, setActivePanel, isOnline, setOnline } = useUIStore()
+  const { activePanel, setActivePanel, isOnline, setOnline, isPinoutOpen } = useUIStore()
 
   useEffect(() => {
     const handleOnline = () => setOnline(true)
@@ -525,6 +523,8 @@ export default function App() {
         {/* Bottom status bar */}
         <StatusBar />
       </div>
+
+      {isPinoutOpen && <PinoutOverlay />}
     </ToastProvider>
   )
 }
