@@ -2,6 +2,10 @@ export type CardColumn = 'backlog' | 'in_progress' | 'done'
 export type CardType = 'software' | 'hardware'
 export type StatusFlag = 'blocked' | 'outdated' | 'low_stock' | 'needs_maintenance'
 export type AlertSeverity = 'low' | 'medium' | 'high' | 'critical'
+export type ProjectClassification = 'software' | 'hardware' | 'mixed' | 'research' | 'other'
+export type ProjectStatus = 'planning' | 'active' | 'paused' | 'completed' | 'cancelled'
+export type IssueSeverity = 'low' | 'medium' | 'high' | 'critical'
+export type IssueStatus = 'open' | 'in_progress' | 'closed'
 
 export interface SoftwareMeta {
   repo?: string
@@ -36,12 +40,41 @@ export interface Database {
           owner_id: string | null
           name: string
           description: string | null
+          classification: ProjectClassification | null
+          status: ProjectStatus
+          estimated_completion_date: string | null
           scratchpad_content: string | null
           created_at: string
           updated_at: string
         }
         Insert: Omit<Database['public']['Tables']['projects']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['projects']['Insert']>
+      }
+      objectives: {
+        Row: {
+          id: string
+          project_id: string
+          title: string
+          completed: boolean
+          position: number
+          created_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['objectives']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['public']['Tables']['objectives']['Insert']>
+      }
+      issues: {
+        Row: {
+          id: string
+          project_id: string
+          title: string
+          description: string | null
+          severity: IssueSeverity
+          status: IssueStatus
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['issues']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['issues']['Insert']>
       }
       cards: {
         Row: {
