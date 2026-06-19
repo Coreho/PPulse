@@ -1,8 +1,10 @@
+export type NavFilter = 'all' | 'active' | 'completed' | 'notes'
+
 export type CardColumn = 'backlog' | 'in_progress' | 'done'
 export type CardType = 'software' | 'hardware'
 export type StatusFlag = 'blocked' | 'outdated' | 'low_stock' | 'needs_maintenance'
 export type AlertSeverity = 'low' | 'medium' | 'high' | 'critical'
-export type ProjectClassification = 'software' | 'hardware' | 'mixed' | 'research' | 'other'
+export type ProjectClassification = 'home' | 'software' | 'hardware' | 'mixed' | 'research' | 'other'
 export type ProjectStatus = 'planning' | 'active' | 'paused' | 'completed' | 'cancelled'
 export type IssueSeverity = 'low' | 'medium' | 'high' | 'critical'
 export type IssueStatus = 'open' | 'in_progress' | 'closed'
@@ -168,6 +170,20 @@ export interface Database {
         }
         Insert: Omit<Database['public']['Tables']['timers']['Row'], 'id'>
         Update: Partial<Database['public']['Tables']['timers']['Insert']>
+      }
+      todos: {
+        Row: {
+          id: string
+          owner_id: string | null
+          title: string
+          details: string[]
+          completed: boolean
+          position: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['todos']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['todos']['Insert']>
       }
     }
   }
