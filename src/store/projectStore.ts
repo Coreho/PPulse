@@ -11,7 +11,7 @@ interface ProjectStore {
   loading: boolean
 
   loadProjects: () => Promise<void>
-  createProject: (name: string) => Promise<Project>
+  createProject: (name: string, classification?: ProjectClassification | null, status?: ProjectStatus) => Promise<Project>
   updateProject: (id: string, updates: {
     name?: string
     description?: string
@@ -22,6 +22,10 @@ interface ProjectStore {
   deleteProject: (id: string) => Promise<void>
   setActiveProject: (project: Project | null) => void
   updateScratchpad: (projectId: string, content: string) => Promise<void>
+  togglePin: (id: string) => Promise<void>
+  archiveProject: (id: string) => Promise<void>
+  unarchiveProject: (id: string) => Promise<void>
+  duplicateProject: (id: string) => Promise<void>
 }
 
 export const useProjectStore = create<ProjectStore>((set, get) => ({
@@ -36,10 +40,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({ projects, loading: false })
   },
 
-  createProject: async (name) => {
+  createProject: async (name, classification = null, status = 'planning') => {
     const { data, error } = await supabase
       .from('projects')
-      .insert({ name, scratchpad_content: '', status: 'planning', classification: null, description: null, estimated_completion_date: null })
+      .insert({ name, scratchpad_content: '', status, classification: classification ?? null, description: null, estimated_completion_date: null })
       .select()
       .single()
     if (error) throw error
@@ -88,5 +92,85 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     } catch {
       await enqueueMutation('projects', 'upsert', { id: projectId, scratchpad_content: content, updated_at: now })
     }
+  },
+
+  togglePin: async (id) => {
+    const proj = get().projects.find(p => p.id === id)
+    if (!proj) return
+    const is_pinned = !(proj as { is_pinned?: boolean }).is_pinned
+    set(s => ({ projects: s.projects.map(p => p.id === id ? { ...p, is_pinned } : p) }))
+    try {
+      const { error } = await supabase.from('projects').update({ is_pinned }).eq('id', id)
+      if (error) throw error
+    } catch {
+      await enqueueMutation('projects', 'upsert', { id, is_pinned })
+    }
+  },
+
+  archiveProject: async (id) => {
+    const archived_at = new Date().toISOString()
+    set(s => ({ projects: s.projects.map(p => p.id === id ? { ...p, archived_at } : p) }))
+    try {
+      const { error } = await supabase.from('projects').update({ archived_at }).eq('id', id)
+      if (error) throw error
+    } catch {
+      await enqueueMutation('projects', 'upsert', { id, archived_at })
+    }
+  },
+
+  unarchiveProject: async (id) => {
+    set(s => ({ projects: s.projects.map(p => p.id === id ? { ...p, archived_at: null } : p) }))
+    try {
+      const { error } = await supabase.from('projects').update({ archived_at: null }).eq('id', id)
+      if (error) throw error
+    } catch {
+      await enqueueMutation('projects', 'upsert', { id, archived_at: null })
+    }
+  },
+
+  duplicateProject: async (id) => {
+    const src = get().projects.find(p => p.id === id)
+    if (!src) return
+    const { data: newProj, error } = await supabase
+      .from('projects')
+      .insert({
+        name: `${src.name} (copy)`,
+        description: src.description ?? null,
+        classification: (src as { classification?: string | null }).classification ?? null,
+        status: (src as { status?: string }).status ?? 'planning',
+        estimated_completion_date: (src as { estimated_completion_date?: string | null }).estimated_completion_date ?? null,
+        scratchpad_content: (src as { scratchpad_content?: string | null }).scratchpad_content ?? '',
+      })
+      .select()
+      .single()
+    if (error || !newProj) return
+
+    // sub_projects: map old id -> new id
+    const { data: subs } = await supabase.from('sub_projects').select('*').eq('project_id', id)
+    const subIdMap = new Map<string, string>()
+    for (const sp of subs ?? []) {
+      const { data: newSub } = await supabase.from('sub_projects')
+        .insert({ project_id: newProj.id, name: sp.name, position: sp.position })
+        .select().single()
+      if (newSub) subIdMap.set(sp.id, newSub.id)
+    }
+
+    const remap = (oldSub: string | null) => (oldSub ? subIdMap.get(oldSub) ?? null : null)
+
+    const { data: objectives } = await supabase.from('objectives').select('*').eq('project_id', id)
+    for (const o of objectives ?? []) {
+      await supabase.from('objectives').insert({
+        project_id: newProj.id, sub_project_id: remap(o.sub_project_id),
+        title: o.title, completed: o.completed, position: o.position,
+      })
+    }
+
+    const { data: cards } = await supabase.from('cards').select('*').eq('project_id', id)
+    for (const c of cards ?? []) {
+      const { id: _id, created_at: _c, updated_at: _u, ...rest } = c
+      await supabase.from('cards').insert({ ...rest, project_id: newProj.id, sub_project_id: remap(c.sub_project_id) })
+    }
+
+    set(s => ({ projects: [newProj, ...s.projects] }))
   },
 }))
