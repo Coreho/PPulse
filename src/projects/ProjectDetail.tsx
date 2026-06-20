@@ -18,6 +18,8 @@ import { MachinesPanel } from '@/machines/MachinesPanel'
 import { TimerPanel } from '@/timers/TimerPanel'
 import { useUIStore } from '@/store/uiStore'
 import type { Database, ProjectClassification, ProjectStatus, IssueSeverity } from '@/db/types'
+import { getClassAccent } from '@/projects/ProjectList'
+import { SubProjectsSection } from '@/projects/subprojects/SubProjectsSection'
 
 type Project = Database['public']['Tables']['projects']['Row']
 type Objective = Database['public']['Tables']['objectives']['Row']
@@ -95,6 +97,7 @@ function OverviewTab({ project }: { project: Project }) {
           <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Classification</label>
           <select style={selectStyle} value={classification} onChange={e => setClassification(e.target.value as ProjectClassification | '')}>
             <option value="">— None —</option>
+            <option value="home">Home</option>
             <option value="software">Software</option>
             <option value="hardware">Hardware</option>
             <option value="mixed">Mixed</option>
@@ -135,6 +138,10 @@ function OverviewTab({ project }: { project: Project }) {
       >
         {saved ? <><Check size={13} weight="bold" /> Saved</> : 'Save Changes'}
       </button>
+
+      <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '16px' }}>
+        <SubProjectsSection projectId={project.id} />
+      </div>
     </div>
   )
 }
@@ -550,13 +557,15 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
 interface ProjectDetailProps {
   project: Project
   onBack: () => void
+  initialTab?: Tab
 }
 
-export function ProjectDetail({ project, onBack }: ProjectDetailProps) {
-  const [tab, setTab] = useState<Tab>('overview')
+export function ProjectDetail({ project, onBack, initialTab = 'overview' }: ProjectDetailProps) {
+  const [tab, setTab] = useState<Tab>(initialTab)
   const { activeProject } = useProjectStore()
   const current = activeProject?.id === project.id ? activeProject : project
 
+  const accent = getClassAccent(current.classification)
   const isFullHeight = tab === 'kanban' || tab === 'notes' || tab === 'hardware'
 
   return (
@@ -589,7 +598,7 @@ export function ProjectDetail({ project, onBack }: ProjectDetailProps) {
           {current.name}
         </span>
         {current.classification && (
-          <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 7px', borderRadius: '0.25rem', backgroundColor: 'var(--color-surface-3)', color: 'var(--color-text-secondary)' }}>
+          <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 7px', borderRadius: '0.25rem', backgroundColor: `${accent}18`, color: accent }}>
             {current.classification}
           </span>
         )}
@@ -615,11 +624,11 @@ export function ProjectDetail({ project, onBack }: ProjectDetailProps) {
             style={{
               display: 'flex', alignItems: 'center', gap: '5px',
               padding: '8px 12px', fontSize: '12px', fontWeight: tab === t.key ? 600 : 400,
-              border: 'none', borderBottom: tab === t.key ? '2px solid var(--color-accent)' : '2px solid transparent',
+              border: 'none', borderBottom: tab === t.key ? `2px solid ${accent}` : '2px solid transparent',
               borderRadius: 0,
               cursor: 'pointer',
               backgroundColor: 'transparent',
-              color: tab === t.key ? 'var(--color-accent)' : 'var(--color-text-muted)',
+              color: tab === t.key ? accent : 'var(--color-text-muted)',
               whiteSpace: 'nowrap', flexShrink: 0,
             }}
           >
