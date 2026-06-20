@@ -4,6 +4,10 @@ import {
   Plus, Trash, MagnifyingGlass, CaretRight, X, ArrowRight,
 } from '@phosphor-icons/react'
 import { useProjectStore } from '@/store/projectStore'
+import { useRollupStore } from '@/store/rollupStore'
+import { StatsHeader } from './master/StatsHeader'
+import { ProjectControls, type ViewMode, type SortKey } from './master/ProjectControls'
+import { ProjectCardActions } from './master/ProjectCardActions'
 import type { Database, ProjectClassification, ProjectStatus, NavFilter } from '@/db/types'
 
 type Project = Database['public']['Tables']['projects']['Row']
@@ -500,6 +504,18 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
   const [creating, setCreating] = useState(false)
   const [activeStatFilter, setActiveStatFilter] = useState<ProjectStatus | null>(null)
 
+  // View/sort/archive controls
+  const [view, setView] = useState<ViewMode>('grid')
+  const [sort, setSort] = useState<SortKey>('activity')
+  const [showArchived, setShowArchived] = useState(false)
+
+  // Rollups
+  const loadRollups = useRollupStore(s => s.loadRollups)
+  const rollups = useRollupStore(s => s.rollups)
+  useEffect(() => {
+    if (projects.length) void loadRollups(projects.map(p => ({ id: p.id, estimated_completion_date: p.estimated_completion_date })))
+  }, [projects, loadRollups])
+
   // Reset class tab and stat filter when nav changes
   useEffect(() => { setClassTab('all'); setSearch(''); setActiveStatFilter(null) }, [navFilter])
 
@@ -535,6 +551,23 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
   const displayed = useMemo(() =>
     search.trim() ? byClass.filter(p => p.name.toLowerCase().includes(search.toLowerCase().trim())) : byClass,
     [byClass, search])
+
+  // Pin-first + archive filter + sort on top of the existing filter pipeline
+  const visible = useMemo(() =>
+    displayed
+      .filter(p => showArchived ? true : !p.archived_at)
+      .sort((a, b) => {
+        if (!!a.is_pinned !== !!b.is_pinned) return a.is_pinned ? -1 : 1
+        switch (sort) {
+          case 'name':     return a.name.localeCompare(b.name)
+          case 'due':      return (a.estimated_completion_date ?? '9999').localeCompare(b.estimated_completion_date ?? '9999')
+          case 'progress': return (rollups[b.id]?.completion ?? 0) - (rollups[a.id]?.completion ?? 0)
+          case 'status':   return (a.status ?? '').localeCompare(b.status ?? '')
+          case 'activity':
+          default:         return (b.updated_at ?? '').localeCompare(a.updated_at ?? '')
+        }
+      }),
+    [displayed, showArchived, sort, rollups])
 
   // Global stats (always full picture for dashboard feel)
   const stats = useMemo(() => ({
@@ -606,6 +639,9 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
           </div>
         </div>
 
+        {/* ── StatsHeader (rollup summary bar) ── */}
+        <StatsHeader />
+
         {/* ── Stats strip ── */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 28 }}>
           <StatCard label="Total"     value={stats.total}     color="#8b5cf6" active={activeStatFilter === null}    onClick={() => setActiveStatFilter(null)} />
@@ -624,14 +660,14 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, color: '#fff', margin: 0 }}>
             {search ? `Search: "${search}"` : sectionLabel}
           </h2>
-          {displayed.length > 0 && (
+          {visible.length > 0 && (
             <span style={{
               display: 'flex', alignItems: 'center', gap: 4, fontSize: 11,
               padding: '5px 12px', borderRadius: 999,
               background: 'rgba(255,255,255,0.04)', color: '#444',
               border: EDGE,
             }}>
-              {displayed.length} project{displayed.length !== 1 ? 's' : ''} <CaretRight size={11} />
+              {visible.length} project{visible.length !== 1 ? 's' : ''} <CaretRight size={11} />
             </span>
           )}
         </div>
@@ -641,10 +677,17 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
           <ClassificationTabs counts={classCounts} active={classTab} onSelect={setClassTab} />
         )}
 
-        {/* ── Grid ── */}
-        {loading && displayed.length === 0 ? (
+        {/* ── View / sort / archive controls ── */}
+        <ProjectControls
+          view={view} onView={setView}
+          sort={sort} onSort={setSort}
+          showArchived={showArchived} onToggleArchived={setShowArchived}
+        />
+
+        {/* ── Project list ── */}
+        {loading && visible.length === 0 ? (
           <p style={{ color: '#2a2a2a', fontSize: 13, textAlign: 'center', marginTop: 60 }}>Loading…</p>
-        ) : displayed.length === 0 ? (
+        ) : visible.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '35vh', gap: 14 }}>
             {search ? (
               <>
@@ -670,15 +713,109 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
               </>
             )}
           </div>
+        ) : view === 'list' ? (
+          /* ── List view: dense single column ── */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {visible.map(p => {
+              const ac = getClassAccent(p.classification)
+              const rollup = rollups[p.id]
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => onOpen(p)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 14,
+                    padding: '10px 16px', borderRadius: '0.875rem',
+                    background: BG, border: EDGE, cursor: 'pointer',
+                    transition: 'background 0.15s',
+                  }}
+                >
+                  <div style={{ width: 3, height: 32, borderRadius: 999, background: ac, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {p.is_pinned && <span style={{ fontSize: 10, color: '#f59e0b' }}>📌</span>}
+                      <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                      {rollup && (
+                        <>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: rollup.health === 'red' ? '#f87171' : rollup.health === 'amber' ? '#fb923c' : '#4ade80', flexShrink: 0 }} />
+                          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', flexShrink: 0 }}>{Math.round(rollup.completion * 100)}%</span>
+                          {rollup.openIssues > 0 && <span style={{ fontSize: 11, color: '#fb923c', flexShrink: 0 }}>{rollup.openIssues} open</span>}
+                          {rollup.subProjectCount > 0 && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}>{rollup.subProjectCount} sub</span>}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 11, color: '#333', flexShrink: 0 }}>{STATUS_LABEL[(p.status ?? 'planning') as ProjectStatus]}</span>
+                  <div onClick={e => e.stopPropagation()}>
+                    <ProjectCardActions project={p} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : view === 'board' ? (
+          /* ── Board view: columns grouped by status ── */
+          <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', overflowX: 'auto', paddingBottom: 8 }}>
+            {(['planning', 'active', 'paused', 'completed', 'cancelled'] as ProjectStatus[])
+              .map(status => {
+                const col = visible.filter(p => (p.status ?? 'planning') === status)
+                if (col.length === 0) return null
+                return (
+                  <div key={status} style={{ minWidth: 260, flex: '0 0 260px' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#444', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
+                      {STATUS_LABEL[status]} <span style={{ color: '#333' }}>{col.length}</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {col.map(p => {
+                        const rollup = rollups[p.id]
+                        return (
+                          <div key={p.id} style={{ position: 'relative' }}>
+                            <ProjectTile project={p} onOpen={() => onOpen(p)} onDelete={() => deleteProject(p.id)} />
+                            {rollup && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 20px 10px', marginTop: -6 }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: rollup.health === 'red' ? '#f87171' : rollup.health === 'amber' ? '#fb923c' : '#4ade80' }} />
+                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{Math.round(rollup.completion * 100)}%</span>
+                                {rollup.openIssues > 0 && <span style={{ fontSize: 11, color: '#fb923c' }}>{rollup.openIssues} open</span>}
+                                {rollup.subProjectCount > 0 && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{rollup.subProjectCount} sub</span>}
+                              </div>
+                            )}
+                            <div style={{ position: 'absolute', top: 10, right: 10 }} onClick={e => e.stopPropagation()}>
+                              <ProjectCardActions project={p} />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
         ) : (
+          /* ── Grid view (default) ── */
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
             gap: 14, alignItems: 'start',
           }}>
-            {displayed.map(p => (
-              <ProjectTile key={p.id} project={p} onOpen={() => onOpen(p)} onDelete={() => deleteProject(p.id)} />
-            ))}
+            {visible.map(p => {
+              const rollup = rollups[p.id]
+              return (
+                <div key={p.id} style={{ position: 'relative' }}>
+                  <ProjectTile project={p} onOpen={() => onOpen(p)} onDelete={() => deleteProject(p.id)} />
+                  {rollup && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 20px 12px', marginTop: -8 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: rollup.health === 'red' ? '#f87171' : rollup.health === 'amber' ? '#fb923c' : '#4ade80' }} />
+                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{Math.round(rollup.completion * 100)}%</span>
+                      {rollup.openIssues > 0 && <span style={{ fontSize: 11, color: '#fb923c' }}>{rollup.openIssues} open</span>}
+                      {rollup.subProjectCount > 0 && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{rollup.subProjectCount} sub</span>}
+                    </div>
+                  )}
+                  <div style={{ position: 'absolute', top: 10, right: 10 }} onClick={e => e.stopPropagation()}>
+                    <ProjectCardActions project={p} />
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 
