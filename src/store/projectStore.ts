@@ -167,8 +167,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
     const { data: cards } = await supabase.from('cards').select('*').eq('project_id', id)
     for (const c of cards ?? []) {
-      const { id: _id, created_at: _c, updated_at: _u, ...rest } = c
-      await supabase.from('cards').insert({ ...rest, project_id: newProj.id, sub_project_id: remap(c.sub_project_id), blocked_by: [] })
+      const rest = { ...c } as Record<string, unknown>
+      delete rest.id
+      delete rest.created_at
+      delete rest.updated_at
+      await supabase.from('cards').insert({ ...rest, project_id: newProj.id, sub_project_id: remap(c.sub_project_id), blocked_by: [] } as never)
     }
 
     set(s => ({ projects: [newProj, ...s.projects] }))

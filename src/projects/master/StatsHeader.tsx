@@ -14,6 +14,11 @@ function dueWithinDays(date: string | null, days: number): boolean {
   return diff >= 0 && diff <= days * 24 * 60 * 60 * 1000
 }
 
+function isOverdue(date: string | null): boolean {
+  if (!date) return false
+  return new Date(date).getTime() < Date.now()
+}
+
 // ─── Stat subcomponent ───────────────────────────────────────────────────────
 
 function Stat({ label, value, color = 'rgba(255,255,255,0.85)' }: {
@@ -44,10 +49,7 @@ export function StatsHeader() {
   const overall     = total
     ? Math.round((completions.reduce((a, b) => a + b, 0) / total) * 100)
     : 0
-  const overdue     = projects.filter(p => {
-    const d = p.estimated_completion_date
-    return d != null && new Date(d).getTime() < Date.now()
-  }).length
+  const overdue     = projects.filter(p => isOverdue(p.estimated_completion_date)).length
   const openIssues  = projects.reduce((acc, p) => acc + (rollups[p.id]?.openIssues ?? 0), 0)
   const dueThisWeek = projects.filter(p => dueWithinDays(p.estimated_completion_date, 7)).length
 
