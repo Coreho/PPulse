@@ -24,13 +24,13 @@ CREATE TRIGGER set_sub_projects_updated_at
 ALTER TABLE sub_projects ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "sub_projects_owner_select" ON sub_projects;
-CREATE POLICY "sub_projects_owner_select" ON sub_projects FOR SELECT USING (auth.uid() = owner_id);
+CREATE POLICY "sub_projects_owner_select" ON sub_projects FOR SELECT USING (auth.uid() = owner_id OR owner_id IS NULL);
 DROP POLICY IF EXISTS "sub_projects_owner_insert" ON sub_projects;
-CREATE POLICY "sub_projects_owner_insert" ON sub_projects FOR INSERT WITH CHECK (auth.uid() = owner_id);
+CREATE POLICY "sub_projects_owner_insert" ON sub_projects FOR INSERT WITH CHECK (auth.uid() = owner_id OR owner_id IS NULL);
 DROP POLICY IF EXISTS "sub_projects_owner_update" ON sub_projects;
-CREATE POLICY "sub_projects_owner_update" ON sub_projects FOR UPDATE USING (auth.uid() = owner_id);
+CREATE POLICY "sub_projects_owner_update" ON sub_projects FOR UPDATE USING (auth.uid() = owner_id OR owner_id IS NULL);
 DROP POLICY IF EXISTS "sub_projects_owner_delete" ON sub_projects;
-CREATE POLICY "sub_projects_owner_delete" ON sub_projects FOR DELETE USING (auth.uid() = owner_id);
+CREATE POLICY "sub_projects_owner_delete" ON sub_projects FOR DELETE USING (auth.uid() = owner_id OR owner_id IS NULL);
 
 -- scope columns on existing tables -------------------------------------------
 ALTER TABLE cards      ADD COLUMN IF NOT EXISTS sub_project_id UUID REFERENCES sub_projects(id) ON DELETE CASCADE;
