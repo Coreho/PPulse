@@ -8,8 +8,8 @@ type Objective = Database['public']['Tables']['objectives']['Row']
 interface ObjectivesStore {
   objectives: Objective[]
   loading: boolean
-  loadObjectives: (projectId: string) => Promise<void>
-  addObjective: (projectId: string, title: string) => Promise<void>
+  loadObjectives: (projectId: string, subProjectId?: string | null) => Promise<void>
+  addObjective: (projectId: string, title: string, subProjectId?: string | null) => Promise<void>
   toggleObjective: (id: string) => Promise<void>
   updateObjective: (id: string, title: string) => Promise<void>
   deleteObjective: (id: string) => Promise<void>
@@ -19,21 +19,20 @@ export const useObjectivesStore = create<ObjectivesStore>((set, get) => ({
   objectives: [],
   loading: false,
 
-  loadObjectives: async (projectId) => {
+  loadObjectives: async (projectId, subProjectId = null) => {
     set({ loading: true })
-    const { data } = await supabase
-      .from('objectives')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('position', { ascending: true })
+    let query = supabase.from('objectives').select('*').eq('project_id', projectId)
+    query = subProjectId ? query.eq('sub_project_id', subProjectId) : query.is('sub_project_id', null)
+    const { data } = await query.order('position', { ascending: true })
     set({ objectives: data ?? [], loading: false })
   },
 
-  addObjective: async (projectId, title) => {
+  addObjective: async (projectId, title, subProjectId = null) => {
     const position = get().objectives.length
     const optimistic: Objective = {
       id: crypto.randomUUID(),
       project_id: projectId,
+      sub_project_id: subProjectId,
       title,
       completed: false,
       position,
@@ -43,7 +42,7 @@ export const useObjectivesStore = create<ObjectivesStore>((set, get) => ({
     try {
       const { data, error } = await supabase
         .from('objectives')
-        .insert({ project_id: projectId, title, completed: false, position })
+        .insert({ project_id: projectId, sub_project_id: subProjectId, title, completed: false, position })
         .select()
         .single()
       if (error) throw error
