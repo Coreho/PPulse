@@ -11,7 +11,7 @@ interface CardStore {
   loading: boolean
   _bridgeUpdater: ((tag: string, title: string) => void) | null
 
-  loadCards: (projectId: string) => Promise<void>
+  loadCards: (projectId: string, subProjectId?: string | null) => Promise<void>
   addCard: (card: Database['public']['Tables']['cards']['Insert']) => Promise<void>
   updateCard: (id: string, updates: Database['public']['Tables']['cards']['Update']) => Promise<void>
   moveCard: (id: string, column: CardColumn, position: number) => Promise<void>
@@ -27,13 +27,11 @@ export const useCardStore = create<CardStore>((set, get) => ({
   loading: false,
   _bridgeUpdater: null,
 
-  loadCards: async (projectId) => {
+  loadCards: async (projectId, subProjectId = null) => {
     set({ loading: true })
-    const { data } = await supabase
-      .from('cards')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('position')
+    let query = supabase.from('cards').select('*').eq('project_id', projectId)
+    query = subProjectId ? query.eq('sub_project_id', subProjectId) : query.is('sub_project_id', null)
+    const { data } = await query.order('position')
     set({ cards: data ?? [], loading: false })
   },
 
