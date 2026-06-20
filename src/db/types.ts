@@ -46,6 +46,8 @@ export interface Database {
           status: ProjectStatus
           estimated_completion_date: string | null
           scratchpad_content: string | null
+          is_pinned: boolean
+          archived_at: string | null
           created_at: string
           updated_at: string
         }
@@ -56,6 +58,7 @@ export interface Database {
         Row: {
           id: string
           project_id: string
+          sub_project_id: string | null
           title: string
           completed: boolean
           position: number
@@ -82,6 +85,7 @@ export interface Database {
         Row: {
           id: string
           project_id: string
+          sub_project_id: string | null
           type: CardType
           title: string
           description: string | null
@@ -184,6 +188,31 @@ export interface Database {
         }
         Insert: Omit<Database['public']['Tables']['todos']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['todos']['Insert']>
+      }
+      sub_projects: {
+        Row: {
+          id: string
+          owner_id: string | null
+          project_id: string
+          name: string
+          position: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          owner_id?: string | null
+          project_id: string
+          name: string
+          position?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          name?: string
+          position?: number
+          updated_at?: string
+        }
       }
     }
   }
