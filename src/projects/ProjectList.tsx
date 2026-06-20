@@ -9,6 +9,7 @@ import { StatsHeader } from './master/StatsHeader'
 import { ProjectControls, type ViewMode, type SortKey } from './master/ProjectControls'
 import { ProjectCardActions } from './master/ProjectCardActions'
 import type { Database, ProjectClassification, ProjectStatus, NavFilter } from '@/db/types'
+import type { ProjectRollup } from '@/store/rollups'
 
 type Project = Database['public']['Tables']['projects']['Row']
 
@@ -466,6 +467,24 @@ function NewProjectModal({ onSave, onCancel }: {
   )
 }
 
+// ─── Rollup badge ─────────────────────────────────────────────────────────────
+
+function RollupBadge({ rollup, padding = '0 20px 12px', marginTop = -8 }: {
+  rollup: ProjectRollup | undefined
+  padding?: string
+  marginTop?: number
+}) {
+  if (!rollup) return null
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding, marginTop }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: rollup.health === 'red' ? '#f87171' : rollup.health === 'amber' ? '#fb923c' : '#4ade80' }} />
+      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{Math.round(rollup.completion * 100)}%</span>
+      {rollup.openIssues > 0 && <span style={{ fontSize: 11, color: '#fb923c' }}>{rollup.openIssues} open</span>}
+      {rollup.subProjectCount > 0 && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{rollup.subProjectCount} sub</span>}
+    </div>
+  )
+}
+
 // ─── FAB ─────────────────────────────────────────────────────────────────────
 
 function FAB({ onClick }: { onClick: () => void }) {
@@ -696,6 +715,13 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
                   Clear search
                 </button>
               </>
+            ) : displayed.length > 0 && !showArchived ? (
+              <>
+                <p style={{ color: '#333', fontSize: 14, margin: 0 }}>All matching projects are archived.</p>
+                <button type="button" onClick={() => setShowArchived(true)} style={{ fontSize: 12, color: '#555', background: 'none', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 999, padding: '6px 16px', cursor: 'pointer' }}>
+                  Show archived
+                </button>
+              </>
             ) : (
               <>
                 <div style={{ width: 56, height: 56, borderRadius: '1.25rem', background: 'rgba(255,255,255,0.03)', border: EDGE, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -771,14 +797,7 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
                         return (
                           <div key={p.id} style={{ position: 'relative' }}>
                             <ProjectTile project={p} onOpen={() => onOpen(p)} onDelete={() => deleteProject(p.id)} />
-                            {rollup && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 20px 10px', marginTop: -6 }}>
-                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: rollup.health === 'red' ? '#f87171' : rollup.health === 'amber' ? '#fb923c' : '#4ade80' }} />
-                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{Math.round(rollup.completion * 100)}%</span>
-                                {rollup.openIssues > 0 && <span style={{ fontSize: 11, color: '#fb923c' }}>{rollup.openIssues} open</span>}
-                                {rollup.subProjectCount > 0 && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{rollup.subProjectCount} sub</span>}
-                              </div>
-                            )}
+                            <RollupBadge rollup={rollup} padding="0 20px 10px" marginTop={-6} />
                             <div style={{ position: 'absolute', top: 10, right: 10 }} onClick={e => e.stopPropagation()}>
                               <ProjectCardActions project={p} />
                             </div>
@@ -802,14 +821,7 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
               return (
                 <div key={p.id} style={{ position: 'relative' }}>
                   <ProjectTile project={p} onOpen={() => onOpen(p)} onDelete={() => deleteProject(p.id)} />
-                  {rollup && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 20px 12px', marginTop: -8 }}>
-                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: rollup.health === 'red' ? '#f87171' : rollup.health === 'amber' ? '#fb923c' : '#4ade80' }} />
-                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{Math.round(rollup.completion * 100)}%</span>
-                      {rollup.openIssues > 0 && <span style={{ fontSize: 11, color: '#fb923c' }}>{rollup.openIssues} open</span>}
-                      {rollup.subProjectCount > 0 && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{rollup.subProjectCount} sub</span>}
-                    </div>
-                  )}
+                  <RollupBadge rollup={rollup} />
                   <div style={{ position: 'absolute', top: 10, right: 10 }} onClick={e => e.stopPropagation()}>
                     <ProjectCardActions project={p} />
                   </div>
