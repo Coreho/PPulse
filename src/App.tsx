@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  House, Lightning, CheckCircle, Lightbulb,
+  House, Lightning, CheckCircle, Lightbulb, Plus,
 } from '@phosphor-icons/react'
 import { flushQueue } from '@/db/idb'
 import { supabase } from '@/db/supabase'
@@ -10,6 +10,7 @@ import { ToastProvider } from '@/ui/Toast'
 import { ProjectList } from '@/projects/ProjectList'
 import { ProjectDetail } from '@/projects/ProjectDetail'
 import { TodoPanel } from '@/projects/TodoPanel'
+import { ProjectWizard } from '@/projects/ProjectWizard'
 import type { Database, NavFilter } from '@/db/types'
 
 type Project = Database['public']['Tables']['projects']['Row']
@@ -47,6 +48,7 @@ function NavIcon({
 
 export default function App() {
   const [navFilter, setNavFilter] = useState<NavFilter>('all')
+  const [wizardOpen, setWizardOpen] = useState(false)
   const { activeProject, loadProjects, setActiveProject } = useProjectStore()
   const { isOnline, setOnline } = useUIStore()
 
@@ -140,6 +142,27 @@ export default function App() {
         {!activeProject && <TodoPanel />}
 
       </div>
+
+      {/* ── App-level FAB (dashboard only) ── */}
+      {!activeProject && (
+        <button
+          type="button"
+          onClick={() => setWizardOpen(true)}
+          title="New Project"
+          style={{
+            position: 'fixed', bottom: 28, right: 28,
+            width: 56, height: 56, borderRadius: '50%',
+            background: 'linear-gradient(135deg, #3b82f6, #06b6d4)',
+            boxShadow: '0 4px 24px rgba(59,130,246,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', border: 'none', zIndex: 100,
+          }}
+        >
+          <Plus size={24} color="#fff" weight="bold" />
+        </button>
+      )}
+
+      <ProjectWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} />
     </ToastProvider>
   )
 }

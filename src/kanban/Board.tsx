@@ -135,6 +135,7 @@ export function Board({ projectId }: BoardProps) {
             title={col.title}
             cards={columnCards(col.id)}
             allCards={cards}
+            projectId={projectId}
           />
         ))}
       </DndContext>

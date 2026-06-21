@@ -1,5 +1,8 @@
+import { useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
-import type { CardColumn, Database } from '@/db/types'
+import { Plus, X } from '@phosphor-icons/react'
+import { useCardStore } from '@/store/cardStore'
+import type { CardColumn, CardType, Database } from '@/db/types'
 import { KanbanCard } from './Card'
 
 type Card = Database['public']['Tables']['cards']['Row']
@@ -9,6 +12,7 @@ interface ColumnProps {
   title: string
   cards: Card[]
   allCards: Card[]
+  projectId: string
 }
 
 const COLUMN_ACCENT: Record<CardColumn, string> = {
@@ -29,8 +33,44 @@ const COLUMN_BADGE_COLOR: Record<CardColumn, string> = {
   done: 'var(--color-success)',
 }
 
-export function Column({ id, title, cards, allCards }: ColumnProps) {
+export function Column({ id, title, cards, allCards, projectId }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id })
+  const { addCard } = useCardStore()
+
+  const [composerOpen, setComposerOpen] = useState(false)
+  const [newTitle, setNewTitle] = useState('')
+  const [newType, setNewType] = useState<CardType>('software')
+
+  const handleAdd = async () => {
+    const trimmed = newTitle.trim()
+    if (!trimmed) return
+    await addCard({
+      project_id: projectId,
+      sub_project_id: null,
+      type: newType,
+      title: trimmed,
+      description: null,
+      column: id,
+      position: cards.length,
+      scratchpad_tag: null,
+      meta: null,
+      blocked_by: [],
+      bom_item_id: null,
+      machine_id: null,
+      target_timestamp: null,
+      status_flags: [],
+      machine_session_start: null,
+    })
+    setNewTitle('')
+    setNewType('software')
+    setComposerOpen(false)
+  }
+
+  const handleCancel = () => {
+    setNewTitle('')
+    setNewType('software')
+    setComposerOpen(false)
+  }
 
   return (
     <div
@@ -68,21 +108,144 @@ export function Column({ id, title, cards, allCards }: ColumnProps) {
         >
           {title}
         </span>
-        <span
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span
+            style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              padding: '1px 7px',
+              borderRadius: '0.25rem',
+              backgroundColor: COLUMN_BADGE_BG[id],
+              color: COLUMN_BADGE_COLOR[id],
+              minWidth: '20px',
+              textAlign: 'center',
+            }}
+          >
+            {cards.length}
+          </span>
+          <button
+            type="button"
+            onClick={() => setComposerOpen(o => !o)}
+            aria-label={`Add card to ${title}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '20px',
+              height: '20px',
+              borderRadius: '0.25rem',
+              border: 'none',
+              background: composerOpen ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.06)',
+              color: composerOpen ? '#a855f7' : 'var(--color-text-muted)',
+              cursor: 'pointer',
+              padding: 0,
+              transition: 'background 0.15s, color 0.15s',
+            }}
+          >
+            <Plus size={12} weight="bold" />
+          </button>
+        </div>
+      </div>
+
+      {/* Inline card composer */}
+      {composerOpen && (
+        <div
           style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            padding: '1px 7px',
-            borderRadius: '0.25rem',
-            backgroundColor: COLUMN_BADGE_BG[id],
-            color: COLUMN_BADGE_COLOR[id],
-            minWidth: '20px',
-            textAlign: 'center',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '8px',
+            padding: '8px',
+            margin: '8px 8px 0',
+            flexShrink: 0,
           }}
         >
-          {cards.length}
-        </span>
-      </div>
+          <input
+            type="text"
+            placeholder="Card title..."
+            value={newTitle}
+            autoFocus
+            onChange={e => setNewTitle(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') void handleAdd()
+              if (e.key === 'Escape') handleCancel()
+            }}
+            style={{
+              width: '100%',
+              background: 'rgba(255,255,255,0.07)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '6px',
+              padding: '7px 10px',
+              color: '#fff',
+              fontSize: '13px',
+              outline: 'none',
+              boxSizing: 'border-box',
+              marginBottom: '8px',
+            }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {(['software', 'hardware'] as CardType[]).map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setNewType(t)}
+                  style={{
+                    padding: '3px 10px',
+                    borderRadius: '20px',
+                    border: 'none',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    background: newType === t
+                      ? (t === 'software' ? '#8b5cf6' : '#22d3ee')
+                      : 'rgba(255,255,255,0.06)',
+                    color: newType === t ? '#fff' : 'var(--color-text-muted)',
+                    transition: 'background 0.15s, color 0.15s',
+                  }}
+                >
+                  {t === 'software' ? 'SW' : 'HW'}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                type="button"
+                onClick={handleCancel}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '4px',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--color-text-muted)',
+                  cursor: 'pointer',
+                }}
+                aria-label="Cancel"
+              >
+                <X size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleAdd()}
+                disabled={!newTitle.trim()}
+                style={{
+                  padding: '5px 14px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: newTitle.trim() ? 'pointer' : 'not-allowed',
+                  background: newTitle.trim() ? '#a855f7' : 'rgba(255,255,255,0.06)',
+                  color: newTitle.trim() ? '#fff' : 'var(--color-text-muted)',
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Drop zone */}
       <div

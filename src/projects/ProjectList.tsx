@@ -4,7 +4,12 @@ import {
   Plus, Trash, MagnifyingGlass, CaretRight, X, ArrowRight,
 } from '@phosphor-icons/react'
 import { useProjectStore } from '@/store/projectStore'
+import { useRollupStore } from '@/store/rollupStore'
+import { supabase } from '@/db/supabase'
+import { ProjectControls, type ViewMode, type SortKey } from './master/ProjectControls'
+import { ProjectCardActions } from './master/ProjectCardActions'
 import type { Database, ProjectClassification, ProjectStatus, NavFilter } from '@/db/types'
+import type { ProjectRollup } from '@/store/rollups'
 
 type Project = Database['public']['Tables']['projects']['Row']
 
@@ -72,28 +77,6 @@ function ProgressRing({ pct, color, size = 64 }: { pct: number; color: string; s
   )
 }
 
-// ─── Stat card ────────────────────────────────────────────────────────────────
-
-function StatCard({ label, value, color, active, onClick }: {
-  label: string; value: number; color: string; active?: boolean; onClick?: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        flex: 1, borderRadius: '1rem', padding: '14px 18px', textAlign: 'left',
-        background: active ? `${color}18` : BG,
-        border: active ? `1px solid ${color}55` : EDGE,
-        cursor: onClick ? 'pointer' : 'default',
-        transition: 'all 0.2s',
-      }}
-    >
-      <p style={{ fontFamily: 'var(--font-display)', fontSize: 24, color, margin: 0 }}>{value}</p>
-      <p style={{ fontSize: 11, color: '#444', margin: 0, marginTop: 2 }}>{label}</p>
-    </button>
-  )
-}
 
 // ─── Recent activity dashboard ─────────────────────────────────────────────────
 
@@ -105,81 +88,81 @@ function relativeTime(iso: string): string {
   const hr = Math.floor(min / 60)
   if (hr < 24) return `${hr}h ago`
   const day = Math.floor(hr / 24)
+  if (day === 1) return 'yesterday'
   if (day < 7) return `${day}d ago`
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-function RecentActivityCard({ project, onOpen }: { project: Project; onOpen: () => void }) {
-  const [hovered, setHovered] = useState(false)
-  const ac = getClassAccent(project.classification)
-  const Icon = getClassIcon(project.classification)
-  const status = (project.status ?? 'planning') as ProjectStatus
+function RecentActivity({ projects, onOpen }: { projects: Project[]; onOpen: (p: Project) => void }) {
+  const recent = [...projects]
+    .sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
+    .slice(0, 5)
+  if (recent.length === 0) return null
 
+  return (
+    <section style={{ margin: '0 0 24px' }}>
+      <h2 style={{
+        fontSize: 13, color: '#666', textTransform: 'uppercase',
+        letterSpacing: '0.08em', margin: '0 0 12px',
+        fontFamily: 'var(--font-sans)', fontWeight: 600,
+      }}>
+        Recent Activity
+      </h2>
+      {recent.map(p => {
+        const ac = getClassAccent(p.classification)
+        const Icon = getClassIcon(p.classification)
+        const status = (p.status ?? 'planning') as ProjectStatus
+        return (
+          <ActivityRow
+            key={p.id}
+            project={p}
+            ac={ac}
+            Icon={Icon}
+            status={status}
+            onOpen={() => onOpen(p)}
+          />
+        )
+      })}
+    </section>
+  )
+}
+
+function ActivityRow({ project, ac, Icon, status, onOpen }: {
+  project: Project
+  ac: string
+  Icon: React.ElementType
+  status: ProjectStatus
+  onOpen: () => void
+}) {
+  const [hovered, setHovered] = useState(false)
   return (
     <div
       onClick={onOpen}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        flex: 1, minWidth: 0, position: 'relative',
-        borderRadius: '1.25rem', padding: '16px 18px 44px',
-        background: BG, border: `1px solid ${ac}33`, cursor: 'pointer',
-        transition: 'transform 0.2s, box-shadow 0.2s',
-        transform: hovered ? 'translateY(-3px)' : 'none',
-        boxShadow: hovered ? `0 16px 40px rgba(0,0,0,0.6), 0 0 22px ${ac}22` : 'none',
-        display: 'flex', flexDirection: 'column', gap: 8, minHeight: 132,
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '10px 16px', borderRadius: 12,
+        background: hovered ? 'rgba(255,255,255,0.04)' : '#111',
+        marginBottom: 8, cursor: 'pointer',
+        border: '1px solid rgba(255,255,255,0.05)',
+        transition: 'background 0.15s',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{
-          display: 'flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 999,
-          fontSize: 11, fontWeight: 600, background: `${ac}18`, color: ac,
-        }}>
-          <Icon size={11} weight="fill" />
-          {project.classification ? (CLASS_META[project.classification]?.label ?? project.classification) : 'Project'}
-        </span>
-        <span style={{ fontSize: 10, color: '#555', flexShrink: 0 }}>{relativeTime(project.updated_at)}</span>
-      </div>
-
-      <h3 style={{
-        fontFamily: 'var(--font-display)', fontSize: 17, color: '#fff', margin: 0, lineHeight: 1.2,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{project.name}</h3>
-
-      <p style={{
-        fontSize: 12, color: '#666', margin: 0, lineHeight: 1.5,
-        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-      }}>
-        {project.description?.trim() || `${STATUS_LABEL[status]} · no description yet`}
-      </p>
-
-      {/* Show more — bottom right */}
-      <span style={{
-        position: 'absolute', bottom: 12, right: 14,
-        display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600,
-        color: hovered ? ac : '#555', transition: 'color 0.2s',
-      }}>
-        Show more <ArrowRight size={12} weight="bold" />
+      <Icon size={16} weight="fill" color={ac} style={{ flexShrink: 0 }} />
+      <span style={{ fontSize: 13, color: '#ddd', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {project.name}
       </span>
-    </div>
-  )
-}
-
-function RecentActivity({ projects, onOpen }: { projects: Project[]; onOpen: (p: Project) => void }) {
-  // projects arrive sorted by updated_at desc from the store
-  const recent = projects.slice(0, 3)
-  if (recent.length === 0) return null
-
-  return (
-    <div style={{ marginBottom: 28 }}>
-      <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, color: '#fff', margin: '0 0 12px' }}>
-        Recent Activity
-      </h2>
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        {recent.map(p => (
-          <RecentActivityCard key={p.id} project={p} onOpen={() => onOpen(p)} />
-        ))}
-      </div>
+      <span style={{
+        fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+        background: 'rgba(255,255,255,0.05)', color: '#555', flexShrink: 0,
+      }}>
+        {STATUS_LABEL[status]}
+      </span>
+      <span style={{ fontSize: 11, color: '#444', flexShrink: 0 }}>
+        {relativeTime(project.updated_at)}
+      </span>
+      <CaretRight size={14} color="#444" style={{ flexShrink: 0 }} />
     </div>
   )
 }
@@ -228,15 +211,28 @@ function ClassificationTabs({ counts, active, onSelect }: {
 
 // ─── Project tile ─────────────────────────────────────────────────────────────
 
-function ProjectTile({ project, onOpen, onDelete }: {
-  project: Project; onOpen: () => void; onDelete: () => void
+interface TileObjective { id: string; title: string; completed: boolean }
+
+function ProjectTile({ project, onOpen, onDelete, rollup, objectives }: {
+  project: Project
+  onOpen: () => void
+  onDelete: () => void
+  rollup?: ProjectRollup
+  objectives?: TileObjective[]
 }) {
   const [confirm, setConfirm] = useState(false)
   const [hovered, setHovered] = useState(false)
   const ac = getClassAccent(project.classification)
   const Icon = getClassIcon(project.classification)
   const status = (project.status ?? 'planning') as ProjectStatus
-  const pct = STATUS_PROGRESS[status]
+
+  // Use rollup completion (0–1) if available, fall back to STATUS_PROGRESS
+  const pct = rollup
+    ? Math.round(rollup.completion * 100)
+    : STATUS_PROGRESS[status]
+
+  const topObjs = (objectives ?? []).slice(0, 3)
+  const nextIncomplete = (objectives ?? []).find(o => !o.completed)
 
   return (
     <div
@@ -286,39 +282,72 @@ function ProjectTile({ project, onOpen, onDelete }: {
             }}>
               {project.name}
             </h2>
-            {project.description && (
-              <p style={{
-                fontSize: 12, color: '#555', margin: '6px 0 0', lineHeight: 1.5,
-                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-              }}>
-                {project.description}
-              </p>
-            )}
           </div>
+          {/* Progress ring — uses rollup data */}
           <ProgressRing pct={pct} color={ac} size={60} />
         </div>
 
-        {/* Footer */}
-        <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ flex: 1, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-            <div style={{ width: `${pct}%`, height: '100%', background: ac, borderRadius: 999, transition: 'width 0.4s' }} />
+        {/* Objectives snippet */}
+        {topObjs.length > 0 && (
+          <div style={{
+            borderTop: '1px solid rgba(255,255,255,0.05)',
+            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            padding: '8px 0',
+            display: 'flex', flexDirection: 'column', gap: 4,
+          }}>
+            {topObjs.map(obj => (
+              <div key={obj.id} style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span style={{ fontSize: 11, color: obj.completed ? '#333' : '#555', flexShrink: 0, lineHeight: 1 }}>•</span>
+                <span style={{
+                  fontSize: 11, color: obj.completed ? '#333' : '#555',
+                  textDecoration: obj.completed ? 'line-through' : 'none',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  flex: 1,
+                }}>
+                  {obj.title}
+                </span>
+              </div>
+            ))}
           </div>
-          {project.estimated_completion_date && (
-            <span style={{ fontSize: 10, color: '#444', flexShrink: 0 }}>
-              Due {new Date(project.estimated_completion_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-            </span>
-          )}
-          {confirm ? (
-            <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
-              <button type="button" onClick={() => onDelete()} style={{ fontSize: 10, padding: '2px 8px', background: '#f87171', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}>Del</button>
-              <button type="button" onClick={() => setConfirm(false)} style={{ fontSize: 10, padding: '2px 8px', background: 'rgba(255,255,255,0.07)', color: '#666', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, cursor: 'pointer' }}>✕</button>
+        )}
+
+        {/* Footer */}
+        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* Next action hint */}
+          {nextIncomplete && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+              <ArrowRight size={11} color="#444" style={{ flexShrink: 0 }} />
+              <span style={{
+                fontSize: 11, color: '#444',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                flex: 1,
+              }}>
+                Next: {nextIncomplete.title}
+              </span>
             </div>
-          ) : (
-            <button type="button" onClick={e => { e.stopPropagation(); setConfirm(true) }}
-              style={{ background: 'none', border: 'none', color: '#2a2a2a', cursor: 'pointer', padding: 2, flexShrink: 0, lineHeight: 1 }}>
-              <Trash size={13} />
-            </button>
           )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+              <div style={{ width: `${pct}%`, height: '100%', background: ac, borderRadius: 999, transition: 'width 0.4s' }} />
+            </div>
+            {project.estimated_completion_date && (
+              <span style={{ fontSize: 10, color: '#444', flexShrink: 0 }}>
+                Due {new Date(project.estimated_completion_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </span>
+            )}
+            {confirm ? (
+              <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+                <button type="button" onClick={() => onDelete()} style={{ fontSize: 10, padding: '2px 8px', background: '#f87171', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}>Del</button>
+                <button type="button" onClick={() => setConfirm(false)} style={{ fontSize: 10, padding: '2px 8px', background: 'rgba(255,255,255,0.07)', color: '#666', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, cursor: 'pointer' }}>✕</button>
+              </div>
+            ) : (
+              <button type="button" onClick={e => { e.stopPropagation(); setConfirm(true) }}
+                style={{ background: 'none', border: 'none', color: '#2a2a2a', cursor: 'pointer', padding: 2, flexShrink: 0, lineHeight: 1 }}>
+                <Trash size={13} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -462,6 +491,24 @@ function NewProjectModal({ onSave, onCancel }: {
   )
 }
 
+// ─── Rollup badge ─────────────────────────────────────────────────────────────
+
+function RollupBadge({ rollup, padding = '0 20px 12px', marginTop = -8 }: {
+  rollup: ProjectRollup | undefined
+  padding?: string
+  marginTop?: number
+}) {
+  if (!rollup) return null
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding, marginTop }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: rollup.health === 'red' ? '#f87171' : rollup.health === 'amber' ? '#fb923c' : '#4ade80' }} />
+      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{Math.round(rollup.completion * 100)}%</span>
+      {rollup.openIssues > 0 && <span style={{ fontSize: 11, color: '#fb923c' }}>{rollup.openIssues} open</span>}
+      {rollup.subProjectCount > 0 && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{rollup.subProjectCount} sub</span>}
+    </div>
+  )
+}
+
 // ─── FAB ─────────────────────────────────────────────────────────────────────
 
 function FAB({ onClick }: { onClick: () => void }) {
@@ -500,6 +547,44 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
   const [creating, setCreating] = useState(false)
   const [activeStatFilter, setActiveStatFilter] = useState<ProjectStatus | null>(null)
 
+  // View/sort/archive controls
+  const [view, setView] = useState<ViewMode>('grid')
+  const [sort, setSort] = useState<SortKey>('activity')
+  const [showArchived, setShowArchived] = useState(false)
+
+  // Batch objectives for card snippets — keyed by project_id
+  const [cardObjectives, setCardObjectives] = useState<Record<string, TileObjective[]>>({})
+
+  // Rollups
+  const loadRollups = useRollupStore(s => s.loadRollups)
+  const rollups = useRollupStore(s => s.rollups)
+  useEffect(() => {
+    if (projects.length) void loadRollups(projects.map(p => ({ id: p.id, estimated_completion_date: p.estimated_completion_date })))
+  }, [projects, loadRollups])
+
+  // Load objective snippets for all projects in a single query
+  useEffect(() => {
+    if (!projects.length) return
+    const ids = projects.map(p => p.id)
+    void supabase
+      .from('objectives')
+      .select('id, project_id, title, completed, position')
+      .in('project_id', ids)
+      .is('sub_project_id', null)
+      .order('position', { ascending: true })
+      .then(({ data }) => {
+        if (!data) return
+        const grouped: Record<string, TileObjective[]> = {}
+        for (const row of data) {
+          if (!grouped[row.project_id]) grouped[row.project_id] = []
+          if (grouped[row.project_id].length < 3) {
+            grouped[row.project_id].push({ id: row.id, title: row.title, completed: row.completed })
+          }
+        }
+        setCardObjectives(grouped)
+      })
+  }, [projects])
+
   // Reset class tab and stat filter when nav changes
   useEffect(() => { setClassTab('all'); setSearch(''); setActiveStatFilter(null) }, [navFilter])
 
@@ -536,6 +621,23 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
     search.trim() ? byClass.filter(p => p.name.toLowerCase().includes(search.toLowerCase().trim())) : byClass,
     [byClass, search])
 
+  // Pin-first + archive filter + sort on top of the existing filter pipeline
+  const visible = useMemo(() =>
+    displayed
+      .filter(p => showArchived ? true : !p.archived_at)
+      .sort((a, b) => {
+        if (!!a.is_pinned !== !!b.is_pinned) return a.is_pinned ? -1 : 1
+        switch (sort) {
+          case 'name':     return a.name.localeCompare(b.name)
+          case 'due':      return (a.estimated_completion_date ?? '9999').localeCompare(b.estimated_completion_date ?? '9999')
+          case 'progress': return (rollups[b.id]?.completion ?? 0) - (rollups[a.id]?.completion ?? 0)
+          case 'status':   return (a.status ?? '').localeCompare(b.status ?? '')
+          case 'activity':
+          default:         return (b.updated_at ?? '').localeCompare(a.updated_at ?? '')
+        }
+      }),
+    [displayed, showArchived, sort, rollups])
+
   // Global stats (always full picture for dashboard feel)
   const stats = useMemo(() => ({
     total:     projects.length,
@@ -569,49 +671,72 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 32px 8px' }}>
 
         {/* ── Top bar ── */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
           <div>
-            <p style={{ fontSize: 12, color: '#333', margin: '0 0 4px', fontFamily: 'var(--font-sans)' }}>{dateStr}</p>
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 34, color: '#fff', margin: 0, lineHeight: 1.1 }}>
+            <p style={{ fontSize: 12, color: '#555', margin: '0 0 4px', fontFamily: 'var(--font-sans)' }}>{dateStr}</p>
+            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, color: '#fff', margin: '4px 0 0', lineHeight: 1.1 }}>
               {greeting}, Corey
             </h1>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* Search */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '8px 14px', borderRadius: 999,
-              background: searchOpen ? '#181818' : BG,
-              border: searchOpen ? '1px solid rgba(255,255,255,0.15)' : EDGE,
-              transition: 'all 0.2s', minWidth: searchOpen ? 220 : 'auto',
-            }}
-              onClick={() => !searchOpen && setSearchOpen(true)}
-            >
-              <MagnifyingGlass size={14} color={searchOpen ? '#888' : '#333'} style={{ flexShrink: 0 }} />
-              {searchOpen ? (
-                <input
-                  autoFocus
-                  placeholder="Search projects…"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Escape') { setSearch(''); setSearchOpen(false) } }}
-                  onBlur={() => { if (!search) setSearchOpen(false) }}
-                  style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: '#fff', flex: 1, fontFamily: 'var(--font-sans)', width: '100%' }}
-                />
-              ) : (
-                <span style={{ fontSize: 13, color: '#2a2a2a' }}>Search…</span>
-              )}
-              {search && <X size={13} color="#555" style={{ cursor: 'pointer', flexShrink: 0 }} onClick={e => { e.stopPropagation(); setSearch('') }} />}
-            </div>
+          {/* Search pill */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 16px', borderRadius: 999, width: 220,
+            background: '#111', border: '1px solid rgba(255,255,255,0.1)',
+            transition: 'all 0.2s',
+          }}
+            onClick={() => !searchOpen && setSearchOpen(true)}
+          >
+            <MagnifyingGlass size={14} color={searchOpen ? '#888' : '#555'} style={{ flexShrink: 0 }} />
+            {searchOpen ? (
+              <input
+                autoFocus
+                placeholder="Search projects…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Escape') { setSearch(''); setSearchOpen(false) } }}
+                onBlur={() => { if (!search) setSearchOpen(false) }}
+                style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: '#fff', flex: 1, fontFamily: 'var(--font-sans)', width: '100%' }}
+              />
+            ) : (
+              <span style={{ fontSize: 13, color: '#444' }}>Search…</span>
+            )}
+            {search && <X size={13} color="#555" style={{ cursor: 'pointer', flexShrink: 0 }} onClick={e => { e.stopPropagation(); setSearch('') }} />}
           </div>
         </div>
 
-        {/* ── Stats strip ── */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 28 }}>
-          <StatCard label="Total"     value={stats.total}     color="#8b5cf6" active={activeStatFilter === null}    onClick={() => setActiveStatFilter(null)} />
-          <StatCard label="Active"    value={stats.active}    color="#4ade80" active={activeStatFilter === 'active'}    onClick={() => setActiveStatFilter(f => f === 'active' ? null : 'active')} />
-          <StatCard label="Planning"  value={stats.planning}  color="#f59e0b" active={activeStatFilter === 'planning'}  onClick={() => setActiveStatFilter(f => f === 'planning' ? null : 'planning')} />
-          <StatCard label="Completed" value={stats.completed} color="#22d3ee" active={activeStatFilter === 'completed'} onClick={() => setActiveStatFilter(f => f === 'completed' ? null : 'completed')} />
+        {/* ── Elevated stat cards grid ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
+          {([
+            { label: 'Total',     value: stats.total,     accent: '#a855f7', status: null       as ProjectStatus | null },
+            { label: 'Active',    value: stats.active,    accent: '#4ade80', status: 'active'   as ProjectStatus | null },
+            { label: 'Planning',  value: stats.planning,  accent: '#f97316', status: 'planning' as ProjectStatus | null },
+            { label: 'Completed', value: stats.completed, accent: '#3b82f6', status: 'completed' as ProjectStatus | null },
+          ] as { label: string; value: number; accent: string; status: ProjectStatus | null }[]).map(card => {
+            const isActive = activeStatFilter === card.status
+            return (
+              <button
+                key={card.label}
+                type="button"
+                onClick={() => setActiveStatFilter(f => f === card.status ? null : card.status)}
+                style={{
+                  background: isActive ? `${card.accent}14` : '#111',
+                  borderRadius: 16, padding: '20px 24px',
+                  border: isActive ? `1px solid ${card.accent}55` : '1px solid rgba(255,255,255,0.07)',
+                  borderLeft: `3px solid ${card.accent}`,
+                  cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                }}
+              >
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: 32, color: card.accent, lineHeight: 1 }}>
+                  {card.value}
+                </span>
+                <span style={{ fontSize: 12, color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  {card.label}
+                </span>
+              </button>
+            )
+          })}
         </div>
 
         {/* ── Recent activity (dashboard, default view only) ── */}
@@ -624,14 +749,14 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, color: '#fff', margin: 0 }}>
             {search ? `Search: "${search}"` : sectionLabel}
           </h2>
-          {displayed.length > 0 && (
+          {visible.length > 0 && (
             <span style={{
               display: 'flex', alignItems: 'center', gap: 4, fontSize: 11,
               padding: '5px 12px', borderRadius: 999,
               background: 'rgba(255,255,255,0.04)', color: '#444',
               border: EDGE,
             }}>
-              {displayed.length} project{displayed.length !== 1 ? 's' : ''} <CaretRight size={11} />
+              {visible.length} project{visible.length !== 1 ? 's' : ''} <CaretRight size={11} />
             </span>
           )}
         </div>
@@ -641,16 +766,30 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
           <ClassificationTabs counts={classCounts} active={classTab} onSelect={setClassTab} />
         )}
 
-        {/* ── Grid ── */}
-        {loading && displayed.length === 0 ? (
+        {/* ── View / sort / archive controls ── */}
+        <ProjectControls
+          view={view} onView={setView}
+          sort={sort} onSort={setSort}
+          showArchived={showArchived} onToggleArchived={setShowArchived}
+        />
+
+        {/* ── Project list ── */}
+        {loading && visible.length === 0 ? (
           <p style={{ color: '#2a2a2a', fontSize: 13, textAlign: 'center', marginTop: 60 }}>Loading…</p>
-        ) : displayed.length === 0 ? (
+        ) : visible.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '35vh', gap: 14 }}>
             {search ? (
               <>
                 <p style={{ color: '#333', fontSize: 14, margin: 0 }}>No projects match "{search}"</p>
                 <button type="button" onClick={() => setSearch('')} style={{ fontSize: 12, color: '#555', background: 'none', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 999, padding: '6px 16px', cursor: 'pointer' }}>
                   Clear search
+                </button>
+              </>
+            ) : displayed.length > 0 && !showArchived ? (
+              <>
+                <p style={{ color: '#333', fontSize: 14, margin: 0 }}>All matching projects are archived.</p>
+                <button type="button" onClick={() => setShowArchived(true)} style={{ fontSize: 12, color: '#555', background: 'none', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 999, padding: '6px 16px', cursor: 'pointer' }}>
+                  Show archived
                 </button>
               </>
             ) : (
@@ -670,15 +809,95 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
               </>
             )}
           </div>
+        ) : view === 'list' ? (
+          /* ── List view: dense single column ── */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {visible.map(p => {
+              const ac = getClassAccent(p.classification)
+              const rollup = rollups[p.id]
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => onOpen(p)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 14,
+                    padding: '10px 16px', borderRadius: '0.875rem',
+                    background: BG, border: EDGE, cursor: 'pointer',
+                    transition: 'background 0.15s',
+                  }}
+                >
+                  <div style={{ width: 3, height: 32, borderRadius: 999, background: ac, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {p.is_pinned && <span style={{ fontSize: 10, color: '#f59e0b' }}>📌</span>}
+                      <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                      {rollup && (
+                        <>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: rollup.health === 'red' ? '#f87171' : rollup.health === 'amber' ? '#fb923c' : '#4ade80', flexShrink: 0 }} />
+                          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', flexShrink: 0 }}>{Math.round(rollup.completion * 100)}%</span>
+                          {rollup.openIssues > 0 && <span style={{ fontSize: 11, color: '#fb923c', flexShrink: 0 }}>{rollup.openIssues} open</span>}
+                          {rollup.subProjectCount > 0 && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}>{rollup.subProjectCount} sub</span>}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 11, color: '#333', flexShrink: 0 }}>{STATUS_LABEL[(p.status ?? 'planning') as ProjectStatus]}</span>
+                  <div onClick={e => e.stopPropagation()}>
+                    <ProjectCardActions project={p} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : view === 'board' ? (
+          /* ── Board view: columns grouped by status ── */
+          <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', overflowX: 'auto', paddingBottom: 8 }}>
+            {(['planning', 'active', 'paused', 'completed', 'cancelled'] as ProjectStatus[])
+              .map(status => {
+                const col = visible.filter(p => (p.status ?? 'planning') === status)
+                if (col.length === 0) return null
+                return (
+                  <div key={status} style={{ minWidth: 260, flex: '0 0 260px' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#444', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
+                      {STATUS_LABEL[status]} <span style={{ color: '#333' }}>{col.length}</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {col.map(p => {
+                        const rollup = rollups[p.id]
+                        return (
+                          <div key={p.id} style={{ position: 'relative' }}>
+                            <ProjectTile project={p} onOpen={() => onOpen(p)} onDelete={() => deleteProject(p.id)} rollup={rollup} objectives={cardObjectives[p.id]} />
+                            <RollupBadge rollup={rollup} padding="0 20px 10px" marginTop={-6} />
+                            <div style={{ position: 'absolute', top: 10, right: 10 }} onClick={e => e.stopPropagation()}>
+                              <ProjectCardActions project={p} />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
         ) : (
+          /* ── Grid view (default) ── */
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
             gap: 14, alignItems: 'start',
           }}>
-            {displayed.map(p => (
-              <ProjectTile key={p.id} project={p} onOpen={() => onOpen(p)} onDelete={() => deleteProject(p.id)} />
-            ))}
+            {visible.map(p => {
+              const rollup = rollups[p.id]
+              return (
+                <div key={p.id} style={{ position: 'relative' }}>
+                  <ProjectTile project={p} onOpen={() => onOpen(p)} onDelete={() => deleteProject(p.id)} rollup={rollup} objectives={cardObjectives[p.id]} />
+                  <RollupBadge rollup={rollup} />
+                  <div style={{ position: 'absolute', top: 10, right: 10 }} onClick={e => e.stopPropagation()}>
+                    <ProjectCardActions project={p} />
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 
