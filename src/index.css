@@ -38,10 +38,17 @@
 
 html, body, #root {
   height: 100%;
+  /* On iOS PWA: fill the full screen including safe areas */
+  height: 100dvh;
   width: 100%;
   overflow: hidden;
   margin: 0;
   padding: 0;
+  /* Respect notch / Dynamic Island / home indicator */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 body {
