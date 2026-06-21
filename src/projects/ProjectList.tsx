@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import {
   House, Code, Cpu, Shuffle, Flask, DotsThree,
-  Plus, Trash, MagnifyingGlass, CaretRight, X, ArrowRight,
+  Plus, Trash, MagnifyingGlass, CaretRight, X,
 } from '@phosphor-icons/react'
 import { useProjectStore } from '@/store/projectStore'
 import { useRollupStore } from '@/store/rollupStore'
@@ -77,28 +77,6 @@ function ProgressRing({ pct, color, size = 64 }: { pct: number; color: string; s
   )
 }
 
-// ─── Stat card ────────────────────────────────────────────────────────────────
-
-function StatCard({ label, value, color, active, onClick }: {
-  label: string; value: number; color: string; active?: boolean; onClick?: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        flex: 1, borderRadius: '1rem', padding: '14px 18px', textAlign: 'left',
-        background: active ? `${color}18` : BG,
-        border: active ? `1px solid ${color}55` : EDGE,
-        cursor: onClick ? 'pointer' : 'default',
-        transition: 'all 0.2s',
-      }}
-    >
-      <p style={{ fontFamily: 'var(--font-display)', fontSize: 24, color, margin: 0 }}>{value}</p>
-      <p style={{ fontSize: 11, color: '#444', margin: 0, marginTop: 2 }}>{label}</p>
-    </button>
-  )
-}
 
 // ─── Recent activity dashboard ─────────────────────────────────────────────────
 
@@ -110,81 +88,81 @@ function relativeTime(iso: string): string {
   const hr = Math.floor(min / 60)
   if (hr < 24) return `${hr}h ago`
   const day = Math.floor(hr / 24)
+  if (day === 1) return 'yesterday'
   if (day < 7) return `${day}d ago`
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-function RecentActivityCard({ project, onOpen }: { project: Project; onOpen: () => void }) {
-  const [hovered, setHovered] = useState(false)
-  const ac = getClassAccent(project.classification)
-  const Icon = getClassIcon(project.classification)
-  const status = (project.status ?? 'planning') as ProjectStatus
+function RecentActivity({ projects, onOpen }: { projects: Project[]; onOpen: (p: Project) => void }) {
+  const recent = [...projects]
+    .sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
+    .slice(0, 5)
+  if (recent.length === 0) return null
 
+  return (
+    <section style={{ margin: '0 0 24px' }}>
+      <h2 style={{
+        fontSize: 13, color: '#666', textTransform: 'uppercase',
+        letterSpacing: '0.08em', margin: '0 0 12px',
+        fontFamily: 'var(--font-sans)', fontWeight: 600,
+      }}>
+        Recent Activity
+      </h2>
+      {recent.map(p => {
+        const ac = getClassAccent(p.classification)
+        const Icon = getClassIcon(p.classification)
+        const status = (p.status ?? 'planning') as ProjectStatus
+        return (
+          <ActivityRow
+            key={p.id}
+            project={p}
+            ac={ac}
+            Icon={Icon}
+            status={status}
+            onOpen={() => onOpen(p)}
+          />
+        )
+      })}
+    </section>
+  )
+}
+
+function ActivityRow({ project, ac, Icon, status, onOpen }: {
+  project: Project
+  ac: string
+  Icon: React.ElementType
+  status: ProjectStatus
+  onOpen: () => void
+}) {
+  const [hovered, setHovered] = useState(false)
   return (
     <div
       onClick={onOpen}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        flex: 1, minWidth: 0, position: 'relative',
-        borderRadius: '1.25rem', padding: '16px 18px 44px',
-        background: BG, border: `1px solid ${ac}33`, cursor: 'pointer',
-        transition: 'transform 0.2s, box-shadow 0.2s',
-        transform: hovered ? 'translateY(-3px)' : 'none',
-        boxShadow: hovered ? `0 16px 40px rgba(0,0,0,0.6), 0 0 22px ${ac}22` : 'none',
-        display: 'flex', flexDirection: 'column', gap: 8, minHeight: 132,
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '10px 16px', borderRadius: 12,
+        background: hovered ? 'rgba(255,255,255,0.04)' : '#111',
+        marginBottom: 8, cursor: 'pointer',
+        border: '1px solid rgba(255,255,255,0.05)',
+        transition: 'background 0.15s',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{
-          display: 'flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 999,
-          fontSize: 11, fontWeight: 600, background: `${ac}18`, color: ac,
-        }}>
-          <Icon size={11} weight="fill" />
-          {project.classification ? (CLASS_META[project.classification]?.label ?? project.classification) : 'Project'}
-        </span>
-        <span style={{ fontSize: 10, color: '#555', flexShrink: 0 }}>{relativeTime(project.updated_at)}</span>
-      </div>
-
-      <h3 style={{
-        fontFamily: 'var(--font-display)', fontSize: 17, color: '#fff', margin: 0, lineHeight: 1.2,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{project.name}</h3>
-
-      <p style={{
-        fontSize: 12, color: '#666', margin: 0, lineHeight: 1.5,
-        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-      }}>
-        {project.description?.trim() || `${STATUS_LABEL[status]} · no description yet`}
-      </p>
-
-      {/* Show more — bottom right */}
-      <span style={{
-        position: 'absolute', bottom: 12, right: 14,
-        display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600,
-        color: hovered ? ac : '#555', transition: 'color 0.2s',
-      }}>
-        Show more <ArrowRight size={12} weight="bold" />
+      <Icon size={16} weight="fill" color={ac} style={{ flexShrink: 0 }} />
+      <span style={{ fontSize: 13, color: '#ddd', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {project.name}
       </span>
-    </div>
-  )
-}
-
-function RecentActivity({ projects, onOpen }: { projects: Project[]; onOpen: (p: Project) => void }) {
-  // projects arrive sorted by updated_at desc from the store
-  const recent = projects.slice(0, 3)
-  if (recent.length === 0) return null
-
-  return (
-    <div style={{ marginBottom: 28 }}>
-      <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, color: '#fff', margin: '0 0 12px' }}>
-        Recent Activity
-      </h2>
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        {recent.map(p => (
-          <RecentActivityCard key={p.id} project={p} onOpen={() => onOpen(p)} />
-        ))}
-      </div>
+      <span style={{
+        fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+        background: 'rgba(255,255,255,0.05)', color: '#555', flexShrink: 0,
+      }}>
+        {STATUS_LABEL[status]}
+      </span>
+      <span style={{ fontSize: 11, color: '#444', flexShrink: 0 }}>
+        {relativeTime(project.updated_at)}
+      </span>
+      <CaretRight size={14} color="#444" style={{ flexShrink: 0 }} />
     </div>
   )
 }
@@ -621,52 +599,75 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 32px 8px' }}>
 
         {/* ── Top bar ── */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
           <div>
-            <p style={{ fontSize: 12, color: '#333', margin: '0 0 4px', fontFamily: 'var(--font-sans)' }}>{dateStr}</p>
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 34, color: '#fff', margin: 0, lineHeight: 1.1 }}>
+            <p style={{ fontSize: 12, color: '#555', margin: '0 0 4px', fontFamily: 'var(--font-sans)' }}>{dateStr}</p>
+            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, color: '#fff', margin: '4px 0 0', lineHeight: 1.1 }}>
               {greeting}, Corey
             </h1>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* Search */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '8px 14px', borderRadius: 999,
-              background: searchOpen ? '#181818' : BG,
-              border: searchOpen ? '1px solid rgba(255,255,255,0.15)' : EDGE,
-              transition: 'all 0.2s', minWidth: searchOpen ? 220 : 'auto',
-            }}
-              onClick={() => !searchOpen && setSearchOpen(true)}
-            >
-              <MagnifyingGlass size={14} color={searchOpen ? '#888' : '#333'} style={{ flexShrink: 0 }} />
-              {searchOpen ? (
-                <input
-                  autoFocus
-                  placeholder="Search projects…"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Escape') { setSearch(''); setSearchOpen(false) } }}
-                  onBlur={() => { if (!search) setSearchOpen(false) }}
-                  style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: '#fff', flex: 1, fontFamily: 'var(--font-sans)', width: '100%' }}
-                />
-              ) : (
-                <span style={{ fontSize: 13, color: '#2a2a2a' }}>Search…</span>
-              )}
-              {search && <X size={13} color="#555" style={{ cursor: 'pointer', flexShrink: 0 }} onClick={e => { e.stopPropagation(); setSearch('') }} />}
-            </div>
+          {/* Search pill */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 16px', borderRadius: 999, width: 220,
+            background: '#111', border: '1px solid rgba(255,255,255,0.1)',
+            transition: 'all 0.2s',
+          }}
+            onClick={() => !searchOpen && setSearchOpen(true)}
+          >
+            <MagnifyingGlass size={14} color={searchOpen ? '#888' : '#555'} style={{ flexShrink: 0 }} />
+            {searchOpen ? (
+              <input
+                autoFocus
+                placeholder="Search projects…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Escape') { setSearch(''); setSearchOpen(false) } }}
+                onBlur={() => { if (!search) setSearchOpen(false) }}
+                style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: '#fff', flex: 1, fontFamily: 'var(--font-sans)', width: '100%' }}
+              />
+            ) : (
+              <span style={{ fontSize: 13, color: '#444' }}>Search…</span>
+            )}
+            {search && <X size={13} color="#555" style={{ cursor: 'pointer', flexShrink: 0 }} onClick={e => { e.stopPropagation(); setSearch('') }} />}
           </div>
         </div>
 
         {/* ── StatsHeader (rollup summary bar) ── */}
         <StatsHeader />
 
-        {/* ── Stats strip ── */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 28 }}>
-          <StatCard label="Total"     value={stats.total}     color="#8b5cf6" active={activeStatFilter === null}    onClick={() => setActiveStatFilter(null)} />
-          <StatCard label="Active"    value={stats.active}    color="#4ade80" active={activeStatFilter === 'active'}    onClick={() => setActiveStatFilter(f => f === 'active' ? null : 'active')} />
-          <StatCard label="Planning"  value={stats.planning}  color="#f59e0b" active={activeStatFilter === 'planning'}  onClick={() => setActiveStatFilter(f => f === 'planning' ? null : 'planning')} />
-          <StatCard label="Completed" value={stats.completed} color="#22d3ee" active={activeStatFilter === 'completed'} onClick={() => setActiveStatFilter(f => f === 'completed' ? null : 'completed')} />
+        {/* ── Elevated stat cards grid ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
+          {([
+            { label: 'Total',     value: stats.total,     accent: '#a855f7', status: null       as ProjectStatus | null },
+            { label: 'Active',    value: stats.active,    accent: '#4ade80', status: 'active'   as ProjectStatus | null },
+            { label: 'Planning',  value: stats.planning,  accent: '#f97316', status: 'planning' as ProjectStatus | null },
+            { label: 'Completed', value: stats.completed, accent: '#3b82f6', status: 'completed' as ProjectStatus | null },
+          ] as { label: string; value: number; accent: string; status: ProjectStatus | null }[]).map(card => {
+            const isActive = activeStatFilter === card.status
+            return (
+              <button
+                key={card.label}
+                type="button"
+                onClick={() => setActiveStatFilter(f => f === card.status ? null : card.status)}
+                style={{
+                  background: isActive ? `${card.accent}14` : '#111',
+                  borderRadius: 16, padding: '20px 24px',
+                  border: isActive ? `1px solid ${card.accent}55` : '1px solid rgba(255,255,255,0.07)',
+                  borderLeft: `3px solid ${card.accent}`,
+                  cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                }}
+              >
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: 32, color: card.accent, lineHeight: 1 }}>
+                  {card.value}
+                </span>
+                <span style={{ fontSize: 12, color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  {card.label}
+                </span>
+              </button>
+            )
+          })}
         </div>
 
         {/* ── Recent activity (dashboard, default view only) ── */}
