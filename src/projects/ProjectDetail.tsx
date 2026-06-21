@@ -75,18 +75,26 @@ const STATUS_CONFIG: Record<ProjectStatus, { label: string; color: string; bg: s
 }
 
 function OverviewProgressRing({ pct, accent }: { pct: number; accent: string }) {
+  const [animPct, setAnimPct] = useState(0)
   const r = 44, circ = 2 * Math.PI * r
+
+  useEffect(() => {
+    const timer = setTimeout(() => setAnimPct(pct), 50)
+    return () => clearTimeout(timer)
+  }, [pct])
+
+  const dash = (animPct / 100) * circ
   return (
     <svg width={108} height={108} viewBox="0 0 108 108" style={{ display: 'block' }}>
       <circle cx={54} cy={54} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={10} />
       <circle
         cx={54} cy={54} r={r} fill="none" stroke={accent} strokeWidth={10}
-        strokeDasharray={`${circ * pct / 100} ${circ}`}
+        strokeDasharray={`${dash} ${circ}`}
         strokeDashoffset={circ * 0.25}
         strokeLinecap="round"
-        style={{ transition: 'stroke-dasharray 0.4s ease' }}
+        style={{ transition: 'stroke-dasharray 1s ease' }}
       />
-      <text x={54} y={50} textAnchor="middle" fill="#fff" fontSize={18} fontWeight="bold" fontFamily="Archivo Black, sans-serif">{pct}%</text>
+      <text x={54} y={50} textAnchor="middle" fill="#fff" fontSize={18} fontWeight="bold" fontFamily="Archivo Black, sans-serif">{Math.round(animPct)}%</text>
       <text x={54} y={67} textAnchor="middle" fill="#666" fontSize={10} fontFamily="Inter, sans-serif">Complete</text>
     </svg>
   )
@@ -151,6 +159,15 @@ function OverviewTab({ project }: { project: Project }) {
     void handleSave({ estimated_completion_date: d || null })
   }
 
+  const SkeletonLine = ({ w = '100%' }: { w?: string }) => (
+    <div style={{
+      height: 12, width: w, borderRadius: 6,
+      background: 'linear-gradient(90deg, #1a1a1a 25%, #242424 50%, #1a1a1a 75%)',
+      backgroundSize: '800px 100%',
+      animation: 'shimmer 1.4s ease-in-out infinite',
+    }} />
+  )
+
   return (
     <div style={{ maxWidth: '680px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
@@ -164,6 +181,8 @@ function OverviewTab({ project }: { project: Project }) {
         display: 'flex',
         alignItems: 'center',
         gap: '12px',
+        animation: 'fadeUp 0.35s ease both',
+        animationDelay: '0ms',
       }}>
         {editingName ? (
           <input
@@ -220,7 +239,7 @@ function OverviewTab({ project }: { project: Project }) {
       </div>
 
       {/* ── Two-column: ring + metadata ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '124px 1fr', gap: '16px', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '124px 1fr', gap: '16px', alignItems: 'start', animation: 'fadeUp 0.35s ease both', animationDelay: '80ms' }}>
 
         {/* Progress ring */}
         <div style={{
@@ -311,6 +330,8 @@ function OverviewTab({ project }: { project: Project }) {
         border: '1px solid rgba(255,255,255,0.07)',
         borderRadius: '14px',
         padding: '18px 20px',
+        animation: 'fadeUp 0.35s ease both',
+        animationDelay: '160ms',
       }}>
         {/* Section header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
@@ -327,7 +348,11 @@ function OverviewTab({ project }: { project: Project }) {
 
         {/* Objectives list */}
         {objLoading && total === 0 ? (
-          <p style={{ fontSize: '12px', color: '#444', margin: 0 }}>Loading…</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <SkeletonLine />
+            <SkeletonLine w="80%" />
+            <SkeletonLine w="90%" />
+          </div>
         ) : total === 0 ? (
           <p style={{ fontSize: '12px', color: '#333', margin: 0, textAlign: 'center', padding: '16px 0' }}>
             No objectives yet — add them in the Objectives tab
@@ -368,6 +393,8 @@ function OverviewTab({ project }: { project: Project }) {
         border: '1px solid rgba(255,255,255,0.07)',
         borderRadius: '14px',
         padding: '18px 20px',
+        animation: 'fadeUp 0.35s ease both',
+        animationDelay: '240ms',
       }}>
         <h3 style={{ ...SECTION_LABEL, margin: '0 0 10px' }}>Description</h3>
         {editingDesc ? (
@@ -401,7 +428,7 @@ function OverviewTab({ project }: { project: Project }) {
       </div>
 
       {/* ── Sub-projects ── */}
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: '20px' }}>
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: '20px', animation: 'fadeUp 0.35s ease both', animationDelay: '320ms' }}>
         <SubProjectsSection projectId={project.id} />
       </div>
     </div>
@@ -824,6 +851,7 @@ interface ProjectDetailProps {
 
 export function ProjectDetail({ project, onBack, initialTab = 'overview' }: ProjectDetailProps) {
   const [tab, setTab] = useState<Tab>(initialTab)
+  const [hoveredTab, setHoveredTab] = useState<Tab | null>(null)
   const { activeProject } = useProjectStore()
   const current = activeProject?.id === project.id ? activeProject : project
 
@@ -883,15 +911,18 @@ export function ProjectDetail({ project, onBack, initialTab = 'overview' }: Proj
             key={t.key}
             type="button"
             onClick={() => setTab(t.key)}
+            onMouseEnter={() => setHoveredTab(t.key)}
+            onMouseLeave={() => setHoveredTab(null)}
             style={{
               display: 'flex', alignItems: 'center', gap: '5px',
               padding: '8px 12px', fontSize: '12px', fontWeight: tab === t.key ? 600 : 400,
               border: 'none', borderBottom: tab === t.key ? `2px solid ${accent}` : '2px solid transparent',
               borderRadius: 0,
               cursor: 'pointer',
-              backgroundColor: 'transparent',
+              backgroundColor: tab === t.key ? 'transparent' : hoveredTab === t.key ? 'rgba(255,255,255,0.04)' : 'transparent',
               color: tab === t.key ? accent : 'var(--color-text-muted)',
               whiteSpace: 'nowrap', flexShrink: 0,
+              transition: 'border-color 0.2s ease, background-color 0.15s ease, color 0.15s ease',
             }}
           >
             {t.icon} {t.label}
@@ -900,7 +931,15 @@ export function ProjectDetail({ project, onBack, initialTab = 'overview' }: Proj
       </div>
 
       {/* Tab content */}
-      <div style={{ flex: 1, minHeight: 0, overflow: isFullHeight ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column' }}>
+      <div
+        key={tab}
+        style={{
+          flex: 1, minHeight: 0,
+          overflow: isFullHeight ? 'hidden' : 'auto',
+          display: 'flex', flexDirection: 'column',
+          animation: 'fadeUp 0.25s ease both',
+        }}
+      >
         {tab === 'overview' && <OverviewTab project={current} />}
         {tab === 'objectives' && <ObjectivesTab projectId={current.id} />}
         {tab === 'bom' && <div style={{ padding: '0' }}><BomPanel /></div>}

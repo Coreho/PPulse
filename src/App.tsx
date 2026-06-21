@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   House, Lightning, CheckCircle, Lightbulb, Plus,
 } from '@phosphor-icons/react'
@@ -51,6 +51,7 @@ export default function App() {
   const [wizardOpen, setWizardOpen] = useState(false)
   const { activeProject, loadProjects, setActiveProject } = useProjectStore()
   const { isOnline, setOnline } = useUIStore()
+  const prevProjectRef = useRef<boolean>(false)
 
   useEffect(() => {
     const on = () => setOnline(true)
@@ -76,12 +77,22 @@ export default function App() {
 
   useEffect(() => { loadProjects() }, [loadProjects])
 
-  const handleOpen = (project: Project) => setActiveProject(project)
-  const handleBack = () => setActiveProject(null)
+  const handleOpen = (project: Project) => {
+    prevProjectRef.current = false
+    setActiveProject(project)
+  }
+  const handleBack = () => {
+    prevProjectRef.current = true
+    setActiveProject(null)
+  }
+
+  const contentAnim: React.CSSProperties = prevProjectRef.current
+    ? { animation: 'slideInLeft 0.3s ease both' }
+    : { animation: 'slideInRight 0.3s ease both' }
 
   return (
     <ToastProvider>
-      <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', background: '#000' }}>
+      <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', background: '#000', animation: 'fadeIn 0.4s ease both' }}>
 
         {/* ── Side Nav (hidden in project detail) ── */}
         {!activeProject && (
@@ -130,7 +141,10 @@ export default function App() {
         )}
 
         {/* ── Main Content ── */}
-        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div
+          key={activeProject?.id ?? 'list'}
+          style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', ...contentAnim }}
+        >
           {activeProject ? (
             <ProjectDetail project={activeProject} onBack={handleBack} />
           ) : (

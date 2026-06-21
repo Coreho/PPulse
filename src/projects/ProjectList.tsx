@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   House, Code, Cpu, Shuffle, Flask, DotsThree,
   Plus, Trash, MagnifyingGlass, CaretRight, X, ArrowRight,
@@ -57,7 +57,100 @@ function applyNavFilter(projects: Project[], nav: NavFilter): Project[] {
 const BG   = '#111111'
 const EDGE = '1px solid rgba(255,255,255,0.07)'
 
-// ─── Progress ring ────────────────────────────────────────────────────────────
+// ─── useCountUp hook ──────────────────────────────────────────────────────────
+
+function useCountUp(target: number, duration = 600): number {
+  const [val, setVal] = useState(0)
+  useEffect(() => {
+    let start: number | undefined
+    const step = (ts: number) => {
+      if (!start) start = ts
+      const p = Math.min((ts - start) / duration, 1)
+      setVal(Math.round(target * (1 - Math.pow(1 - p, 3))))
+      if (p < 1) requestAnimationFrame(step)
+    }
+    const raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [target, duration])
+  return val
+}
+
+// ─── Skeleton card ────────────────────────────────────────────────────────────
+
+function SkeletonCard() {
+  return (
+    <div style={{
+      borderRadius: 18, padding: 20, height: 260,
+      border: '1px solid rgba(255,255,255,0.06)',
+      background: 'linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%)',
+      backgroundSize: '800px 100%',
+      animation: 'shimmer 1.4s ease-in-out infinite',
+    }} />
+  )
+}
+
+// ─── SparklineChart SVG ───────────────────────────────────────────────────────
+
+function SparklineChart({ pct, accent }: { pct: number; accent: string }) {
+  const bars = Array.from({ length: 8 }, (_, i) => {
+    const base = (i / 7) * pct
+    const jitter = Math.sin(i * 2.3) * 8
+    return Math.max(4, Math.min(100, base + jitter))
+  })
+  return (
+    <svg width={80} height={40} style={{ display: 'block' }}>
+      {bars.map((h, i) => (
+        <rect
+          key={i}
+          x={i * 11}
+          y={40 - (h / 100) * 38}
+          width={7}
+          height={(h / 100) * 38}
+          rx={2}
+          fill={i === 7 ? accent : `${accent}55`}
+          style={{ transition: 'height 0.4s ease' }}
+        />
+      ))}
+    </svg>
+  )
+}
+
+// ─── MiniRing SVG ─────────────────────────────────────────────────────────────
+
+function MiniRing({ pct, accent }: { pct: number; accent: string }) {
+  const r = 20, circ = 2 * Math.PI * r
+  const dash = (pct / 100) * circ
+  const mounted = useRef(false)
+  const [animDash, setAnimDash] = useState(0)
+
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true
+      // Trigger animation after mount
+      const id = requestAnimationFrame(() => setAnimDash(dash))
+      return () => cancelAnimationFrame(id)
+    } else {
+      setAnimDash(dash)
+    }
+  }, [dash])
+
+  return (
+    <svg width={52} height={52} viewBox="0 0 52 52" style={{ flexShrink: 0 }}>
+      <circle cx={26} cy={26} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={5} />
+      <circle
+        cx={26} cy={26} r={r} fill="none" stroke={accent} strokeWidth={5}
+        strokeDasharray={`${animDash} ${circ}`}
+        strokeDashoffset={circ * 0.25}
+        strokeLinecap="round"
+        style={{ transition: 'stroke-dasharray 0.8s ease', filter: `drop-shadow(0 0 4px ${accent}88)` }}
+      />
+      <text x={26} y={30} textAnchor="middle" fill="#fff" fontSize={10} fontWeight="bold"
+        fontFamily="Archivo Black, sans-serif">{Math.round(pct)}%</text>
+    </svg>
+  )
+}
+
+// ─── Progress ring (kept for board/other use) ─────────────────────────────────
 
 function ProgressRing({ pct, color, size = 64 }: { pct: number; color: string; size?: number }) {
   const s = 6, r = (size - s) / 2, circ = 2 * Math.PI * r, dash = (pct / 100) * circ
@@ -213,12 +306,13 @@ function ClassificationTabs({ counts, active, onSelect }: {
 
 interface TileObjective { id: string; title: string; completed: boolean }
 
-function ProjectTile({ project, onOpen, onDelete, rollup, objectives }: {
+function ProjectTile({ project, onOpen, onDelete, rollup, objectives, index = 0 }: {
   project: Project
   onOpen: () => void
   onDelete: () => void
   rollup?: ProjectRollup
   objectives?: TileObjective[]
+  index?: number
 }) {
   const [confirm, setConfirm] = useState(false)
   const [hovered, setHovered] = useState(false)
@@ -240,116 +334,238 @@ function ProjectTile({ project, onOpen, onDelete, rollup, objectives }: {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        borderRadius: '2rem', display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        background: BG, border: EDGE, cursor: 'pointer',
-        transition: 'transform 0.2s, box-shadow 0.2s',
-        transform: hovered ? 'translateY(-4px)' : 'none',
-        boxShadow: hovered ? `0 20px 48px rgba(0,0,0,0.7), 0 0 24px ${ac}22` : 'none',
-        minHeight: 200,
+        borderRadius: 18,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        background: '#111',
+        border: hovered ? `1px solid ${ac}30` : '1px solid rgba(255,255,255,0.06)',
+        cursor: 'pointer',
+        transition: 'all 0.25s ease',
+        transform: hovered ? 'translateY(-3px)' : 'translateY(0)',
+        boxShadow: hovered
+          ? `0 12px 40px ${ac}25, 0 0 0 1px ${ac}30`
+          : 'none',
+        animation: 'fadeUp 0.35s ease both',
+        animationDelay: `${index * 50}ms`,
       }}
     >
-      {/* Accent bar */}
-      <div style={{ height: 3, background: `linear-gradient(90deg, ${ac}, ${ac}55)`, borderRadius: '2rem 2rem 0 0' }} />
+      {/* Thin accent top bar */}
+      <div style={{
+        height: 2,
+        background: `linear-gradient(90deg, ${ac}, ${ac}44)`,
+        flexShrink: 0,
+      }} />
 
-      <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
-        {/* Header row */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+      <div style={{ padding: '16px 18px 18px', display: 'flex', flexDirection: 'column', gap: 0, flex: 1 }}>
+
+        {/* ── Header: icon + name + pin badge ── */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
+          <Icon size={16} weight="fill" color={ac} style={{ flexShrink: 0, marginTop: 3 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            {/* Classification + status badges */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+            <h2 style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 15,
+              color: '#fff',
+              margin: 0,
+              lineHeight: 1.25,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
+              {project.is_pinned && (
+                <span style={{ fontSize: 10, marginRight: 5, color: '#f59e0b' }}>📌</span>
+              )}
+              {project.name}
+            </h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
               {project.classification && (
                 <span style={{
-                  display: 'flex', alignItems: 'center', gap: 4,
-                  padding: '3px 9px', borderRadius: 999, fontSize: 11, fontWeight: 600,
-                  background: `${ac}18`, color: ac,
+                  fontSize: 10, fontWeight: 600, color: ac,
+                  padding: '1px 7px', borderRadius: 999,
+                  background: `${ac}18`,
                 }}>
-                  <Icon size={11} weight="fill" />
                   {CLASS_META[project.classification]?.label ?? project.classification}
                 </span>
               )}
               <span style={{
-                padding: '3px 9px', borderRadius: 999, fontSize: 11, fontWeight: 600,
-                background: 'rgba(255,255,255,0.05)', color: '#666',
+                fontSize: 10, fontWeight: 600, color: '#555',
+                padding: '1px 7px', borderRadius: 999,
+                background: 'rgba(255,255,255,0.05)',
               }}>
                 {STATUS_LABEL[status]}
               </span>
+              {rollup && rollup.subProjectCount > 0 && (
+                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>
+                  {rollup.subProjectCount} sub
+                </span>
+              )}
             </div>
-            {/* Name */}
-            <h2 style={{
-              fontFamily: 'var(--font-display)', fontSize: 19, color: '#fff',
-              margin: 0, lineHeight: 1.2,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {project.name}
-            </h2>
           </div>
-          {/* Progress ring — uses rollup data */}
-          <ProgressRing pct={pct} color={ac} size={60} />
         </div>
 
-        {/* Objectives snippet */}
+        {/* ── Sparkline + big pct metric + MiniRing ── */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          marginBottom: 12,
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {/* ROI label */}
+            <span style={{
+              fontSize: 9,
+              fontWeight: 700,
+              color: '#555',
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+            }}>
+              {rollup && rollup.openIssues > 0
+                ? `${rollup.openIssues} open issue${rollup.openIssues > 1 ? 's' : ''}`
+                : 'Progress'}
+            </span>
+            <SparklineChart pct={pct} accent={ac} />
+            {/* Big % metric */}
+            <span style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 28,
+              color: ac,
+              lineHeight: 1,
+              letterSpacing: '-0.02em',
+            }}>
+              {pct}%
+            </span>
+          </div>
+          <MiniRing pct={pct} accent={ac} />
+        </div>
+
+        {/* ── Divider ── */}
+        <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', marginBottom: 10 }} />
+
+        {/* ── Milestones / Objectives ── */}
         {topObjs.length > 0 && (
-          <div style={{
-            borderTop: '1px solid rgba(255,255,255,0.05)',
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
-            padding: '8px 0',
-            display: 'flex', flexDirection: 'column', gap: 4,
-          }}>
-            {topObjs.map(obj => (
-              <div key={obj.id} style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                <span style={{ fontSize: 11, color: obj.completed ? '#333' : '#555', flexShrink: 0, lineHeight: 1 }}>•</span>
-                <span style={{
-                  fontSize: 11, color: obj.completed ? '#333' : '#555',
-                  textDecoration: obj.completed ? 'line-through' : 'none',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  flex: 1,
-                }}>
-                  {obj.title}
-                </span>
-              </div>
-            ))}
+          <div style={{ marginBottom: 10 }}>
+            <span style={{
+              fontSize: 9,
+              fontWeight: 700,
+              color: '#555',
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              display: 'block',
+              marginBottom: 5,
+            }}>
+              Milestones
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {topObjs.map(obj => (
+                <div key={obj.id} style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+                  <span style={{ fontSize: 10, color: obj.completed ? '#333' : '#555', flexShrink: 0 }}>•</span>
+                  <span style={{
+                    fontSize: 11,
+                    color: obj.completed ? '#333' : '#666',
+                    textDecoration: obj.completed ? 'line-through' : 'none',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    flex: 1,
+                  }}>
+                    {obj.title}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* Footer */}
-        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {/* Next action hint */}
-          {nextIncomplete && (
+        {/* ── Next action ── */}
+        <div style={{ marginTop: 'auto' }}>
+          {nextIncomplete ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-              <ArrowRight size={11} color="#444" style={{ flexShrink: 0 }} />
+              <ArrowRight size={11} color={ac} style={{ flexShrink: 0, opacity: 0.7 }} />
               <span style={{
-                fontSize: 11, color: '#444',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                fontSize: 11,
+                color: '#555',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
                 flex: 1,
               }}>
-                Next: {nextIncomplete.title}
+                {nextIncomplete.title}
               </span>
             </div>
-          )}
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ flex: 1, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-              <div style={{ width: `${pct}%`, height: '100%', background: ac, borderRadius: 999, transition: 'width 0.4s' }} />
-            </div>
-            {project.estimated_completion_date && (
-              <span style={{ fontSize: 10, color: '#444', flexShrink: 0 }}>
+          ) : (
+            project.estimated_completion_date && (
+              <span style={{ fontSize: 10, color: '#444' }}>
                 Due {new Date(project.estimated_completion_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               </span>
-            )}
-            {confirm ? (
-              <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
-                <button type="button" onClick={() => onDelete()} style={{ fontSize: 10, padding: '2px 8px', background: '#f87171', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}>Del</button>
-                <button type="button" onClick={() => setConfirm(false)} style={{ fontSize: 10, padding: '2px 8px', background: 'rgba(255,255,255,0.07)', color: '#666', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, cursor: 'pointer' }}>✕</button>
-              </div>
-            ) : (
-              <button type="button" onClick={e => { e.stopPropagation(); setConfirm(true) }}
-                style={{ background: 'none', border: 'none', color: '#2a2a2a', cursor: 'pointer', padding: 2, flexShrink: 0, lineHeight: 1 }}>
-                <Trash size={13} />
-              </button>
-            )}
-          </div>
+            )
+          )}
+
+          {/* Delete confirm inline */}
+          {confirm && (
+            <div style={{ display: 'flex', gap: 4, marginTop: 8 }} onClick={e => e.stopPropagation()}>
+              <button type="button" onClick={() => onDelete()} style={{ fontSize: 10, padding: '2px 8px', background: '#f87171', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}>Del</button>
+              <button type="button" onClick={() => setConfirm(false)} style={{ fontSize: 10, padding: '2px 8px', background: 'rgba(255,255,255,0.07)', color: '#666', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, cursor: 'pointer' }}>✕</button>
+            </div>
+          )}
+          {!confirm && (
+            <button type="button" onClick={e => { e.stopPropagation(); setConfirm(true) }}
+              style={{ background: 'none', border: 'none', color: '#222', cursor: 'pointer', padding: '2px 0 0', lineHeight: 1, display: 'block', marginTop: 6 }}>
+              <Trash size={12} />
+            </button>
+          )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── Animated stat cards grid ─────────────────────────────────────────────────
+
+function StatCardsGrid({ stats, activeStatFilter, onFilterChange }: {
+  stats: { total: number; active: number; planning: number; completed: number }
+  activeStatFilter: ProjectStatus | null
+  onFilterChange: (fn: (f: ProjectStatus | null) => ProjectStatus | null) => void
+}) {
+  const totalVal     = useCountUp(stats.total)
+  const activeVal    = useCountUp(stats.active)
+  const planningVal  = useCountUp(stats.planning)
+  const completedVal = useCountUp(stats.completed)
+
+  const cards = [
+    { label: 'Total',     value: totalVal,     accent: '#a855f7', status: null        as ProjectStatus | null },
+    { label: 'Active',    value: activeVal,    accent: '#4ade80', status: 'active'    as ProjectStatus | null },
+    { label: 'Planning',  value: planningVal,  accent: '#f97316', status: 'planning'  as ProjectStatus | null },
+    { label: 'Completed', value: completedVal, accent: '#3b82f6', status: 'completed' as ProjectStatus | null },
+  ]
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 28 }}>
+      {cards.map(card => {
+        const isActive = activeStatFilter === card.status
+        return (
+          <button
+            key={card.label}
+            type="button"
+            onClick={() => onFilterChange(f => f === card.status ? null : card.status)}
+            style={{
+              background: isActive ? `${card.accent}14` : '#111',
+              borderRadius: 16, padding: '20px 24px',
+              border: isActive ? `1px solid ${card.accent}55` : '1px solid rgba(255,255,255,0.07)',
+              borderLeft: `3px solid ${card.accent}`,
+              cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
+              display: 'flex', flexDirection: 'column', gap: 8,
+            }}
+          >
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: 32, color: card.accent, lineHeight: 1 }}>
+              {card.value}
+            </span>
+            <span style={{ fontSize: 12, color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              {card.label}
+            </span>
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -706,38 +922,7 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
         </div>
 
         {/* ── Elevated stat cards grid ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
-          {([
-            { label: 'Total',     value: stats.total,     accent: '#a855f7', status: null       as ProjectStatus | null },
-            { label: 'Active',    value: stats.active,    accent: '#4ade80', status: 'active'   as ProjectStatus | null },
-            { label: 'Planning',  value: stats.planning,  accent: '#f97316', status: 'planning' as ProjectStatus | null },
-            { label: 'Completed', value: stats.completed, accent: '#3b82f6', status: 'completed' as ProjectStatus | null },
-          ] as { label: string; value: number; accent: string; status: ProjectStatus | null }[]).map(card => {
-            const isActive = activeStatFilter === card.status
-            return (
-              <button
-                key={card.label}
-                type="button"
-                onClick={() => setActiveStatFilter(f => f === card.status ? null : card.status)}
-                style={{
-                  background: isActive ? `${card.accent}14` : '#111',
-                  borderRadius: 16, padding: '20px 24px',
-                  border: isActive ? `1px solid ${card.accent}55` : '1px solid rgba(255,255,255,0.07)',
-                  borderLeft: `3px solid ${card.accent}`,
-                  cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
-                  display: 'flex', flexDirection: 'column', gap: 8,
-                }}
-              >
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: 32, color: card.accent, lineHeight: 1 }}>
-                  {card.value}
-                </span>
-                <span style={{ fontSize: 12, color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  {card.label}
-                </span>
-              </button>
-            )
-          })}
-        </div>
+        <StatCardsGrid stats={stats} activeStatFilter={activeStatFilter} onFilterChange={setActiveStatFilter} />
 
         {/* ── Recent activity (dashboard, default view only) ── */}
         {navFilter === 'all' && !search && !activeStatFilter && (
@@ -775,7 +960,13 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
 
         {/* ── Project list ── */}
         {loading && visible.length === 0 ? (
-          <p style={{ color: '#2a2a2a', fontSize: 13, textAlign: 'center', marginTop: 60 }}>Loading…</p>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
+            gap: 14, alignItems: 'start',
+          }}>
+            {[0, 1, 2, 3].map(i => <SkeletonCard key={i} />)}
+          </div>
         ) : visible.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '35vh', gap: 14 }}>
             {search ? (
@@ -886,13 +1077,12 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
             gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
             gap: 14, alignItems: 'start',
           }}>
-            {visible.map(p => {
+            {visible.map((p, idx) => {
               const rollup = rollups[p.id]
               return (
                 <div key={p.id} style={{ position: 'relative' }}>
-                  <ProjectTile project={p} onOpen={() => onOpen(p)} onDelete={() => deleteProject(p.id)} rollup={rollup} objectives={cardObjectives[p.id]} />
-                  <RollupBadge rollup={rollup} />
-                  <div style={{ position: 'absolute', top: 10, right: 10 }} onClick={e => e.stopPropagation()}>
+                  <ProjectTile project={p} onOpen={() => onOpen(p)} onDelete={() => deleteProject(p.id)} rollup={rollup} objectives={cardObjectives[p.id]} index={idx} />
+                  <div style={{ position: 'absolute', top: 12, right: 12 }} onClick={e => e.stopPropagation()}>
                     <ProjectCardActions project={p} />
                   </div>
                 </div>

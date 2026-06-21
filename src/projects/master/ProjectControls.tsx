@@ -33,7 +33,7 @@ export function ProjectControls({
   onToggleArchived: (v: boolean) => void
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
       {/* View mode toggle */}
       <div style={{
         display: 'flex', borderRadius: '0.75rem', overflow: 'hidden',
@@ -45,7 +45,7 @@ export function ProjectControls({
             type="button"
             onClick={() => onView(v.key)}
             style={{
-              padding: '6px 14px', fontSize: 12, fontWeight: 600,
+              padding: '6px 10px', fontSize: 12, fontWeight: 600,
               fontFamily: 'var(--font-sans)', cursor: 'pointer', border: 'none',
               background: view === v.key ? 'rgba(255,255,255,0.1)' : 'transparent',
               color: view === v.key ? '#fff' : 'rgba(255,255,255,0.3)',
