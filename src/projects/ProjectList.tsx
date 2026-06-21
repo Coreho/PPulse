@@ -1,11 +1,11 @@
 import { useState, useMemo, useEffect } from 'react'
 import {
   House, Code, Cpu, Shuffle, Flask, DotsThree,
-  Plus, Trash, MagnifyingGlass, CaretRight, X,
+  Plus, Trash, MagnifyingGlass, CaretRight, X, ArrowRight,
 } from '@phosphor-icons/react'
 import { useProjectStore } from '@/store/projectStore'
 import { useRollupStore } from '@/store/rollupStore'
-import { StatsHeader } from './master/StatsHeader'
+import { supabase } from '@/db/supabase'
 import { ProjectControls, type ViewMode, type SortKey } from './master/ProjectControls'
 import { ProjectCardActions } from './master/ProjectCardActions'
 import type { Database, ProjectClassification, ProjectStatus, NavFilter } from '@/db/types'
@@ -211,15 +211,28 @@ function ClassificationTabs({ counts, active, onSelect }: {
 
 // ─── Project tile ─────────────────────────────────────────────────────────────
 
-function ProjectTile({ project, onOpen, onDelete }: {
-  project: Project; onOpen: () => void; onDelete: () => void
+interface TileObjective { id: string; title: string; completed: boolean }
+
+function ProjectTile({ project, onOpen, onDelete, rollup, objectives }: {
+  project: Project
+  onOpen: () => void
+  onDelete: () => void
+  rollup?: ProjectRollup
+  objectives?: TileObjective[]
 }) {
   const [confirm, setConfirm] = useState(false)
   const [hovered, setHovered] = useState(false)
   const ac = getClassAccent(project.classification)
   const Icon = getClassIcon(project.classification)
   const status = (project.status ?? 'planning') as ProjectStatus
-  const pct = STATUS_PROGRESS[status]
+
+  // Use rollup completion (0–1) if available, fall back to STATUS_PROGRESS
+  const pct = rollup
+    ? Math.round(rollup.completion * 100)
+    : STATUS_PROGRESS[status]
+
+  const topObjs = (objectives ?? []).slice(0, 3)
+  const nextIncomplete = (objectives ?? []).find(o => !o.completed)
 
   return (
     <div
@@ -269,39 +282,72 @@ function ProjectTile({ project, onOpen, onDelete }: {
             }}>
               {project.name}
             </h2>
-            {project.description && (
-              <p style={{
-                fontSize: 12, color: '#555', margin: '6px 0 0', lineHeight: 1.5,
-                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-              }}>
-                {project.description}
-              </p>
-            )}
           </div>
+          {/* Progress ring — uses rollup data */}
           <ProgressRing pct={pct} color={ac} size={60} />
         </div>
 
-        {/* Footer */}
-        <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ flex: 1, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-            <div style={{ width: `${pct}%`, height: '100%', background: ac, borderRadius: 999, transition: 'width 0.4s' }} />
+        {/* Objectives snippet */}
+        {topObjs.length > 0 && (
+          <div style={{
+            borderTop: '1px solid rgba(255,255,255,0.05)',
+            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            padding: '8px 0',
+            display: 'flex', flexDirection: 'column', gap: 4,
+          }}>
+            {topObjs.map(obj => (
+              <div key={obj.id} style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span style={{ fontSize: 11, color: obj.completed ? '#333' : '#555', flexShrink: 0, lineHeight: 1 }}>•</span>
+                <span style={{
+                  fontSize: 11, color: obj.completed ? '#333' : '#555',
+                  textDecoration: obj.completed ? 'line-through' : 'none',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  flex: 1,
+                }}>
+                  {obj.title}
+                </span>
+              </div>
+            ))}
           </div>
-          {project.estimated_completion_date && (
-            <span style={{ fontSize: 10, color: '#444', flexShrink: 0 }}>
-              Due {new Date(project.estimated_completion_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-            </span>
-          )}
-          {confirm ? (
-            <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
-              <button type="button" onClick={() => onDelete()} style={{ fontSize: 10, padding: '2px 8px', background: '#f87171', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}>Del</button>
-              <button type="button" onClick={() => setConfirm(false)} style={{ fontSize: 10, padding: '2px 8px', background: 'rgba(255,255,255,0.07)', color: '#666', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, cursor: 'pointer' }}>✕</button>
+        )}
+
+        {/* Footer */}
+        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* Next action hint */}
+          {nextIncomplete && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+              <ArrowRight size={11} color="#444" style={{ flexShrink: 0 }} />
+              <span style={{
+                fontSize: 11, color: '#444',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                flex: 1,
+              }}>
+                Next: {nextIncomplete.title}
+              </span>
             </div>
-          ) : (
-            <button type="button" onClick={e => { e.stopPropagation(); setConfirm(true) }}
-              style={{ background: 'none', border: 'none', color: '#2a2a2a', cursor: 'pointer', padding: 2, flexShrink: 0, lineHeight: 1 }}>
-              <Trash size={13} />
-            </button>
           )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+              <div style={{ width: `${pct}%`, height: '100%', background: ac, borderRadius: 999, transition: 'width 0.4s' }} />
+            </div>
+            {project.estimated_completion_date && (
+              <span style={{ fontSize: 10, color: '#444', flexShrink: 0 }}>
+                Due {new Date(project.estimated_completion_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </span>
+            )}
+            {confirm ? (
+              <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+                <button type="button" onClick={() => onDelete()} style={{ fontSize: 10, padding: '2px 8px', background: '#f87171', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}>Del</button>
+                <button type="button" onClick={() => setConfirm(false)} style={{ fontSize: 10, padding: '2px 8px', background: 'rgba(255,255,255,0.07)', color: '#666', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, cursor: 'pointer' }}>✕</button>
+              </div>
+            ) : (
+              <button type="button" onClick={e => { e.stopPropagation(); setConfirm(true) }}
+                style={{ background: 'none', border: 'none', color: '#2a2a2a', cursor: 'pointer', padding: 2, flexShrink: 0, lineHeight: 1 }}>
+                <Trash size={13} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -506,12 +552,38 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
   const [sort, setSort] = useState<SortKey>('activity')
   const [showArchived, setShowArchived] = useState(false)
 
+  // Batch objectives for card snippets — keyed by project_id
+  const [cardObjectives, setCardObjectives] = useState<Record<string, TileObjective[]>>({})
+
   // Rollups
   const loadRollups = useRollupStore(s => s.loadRollups)
   const rollups = useRollupStore(s => s.rollups)
   useEffect(() => {
     if (projects.length) void loadRollups(projects.map(p => ({ id: p.id, estimated_completion_date: p.estimated_completion_date })))
   }, [projects, loadRollups])
+
+  // Load objective snippets for all projects in a single query
+  useEffect(() => {
+    if (!projects.length) return
+    const ids = projects.map(p => p.id)
+    void supabase
+      .from('objectives')
+      .select('id, project_id, title, completed, position')
+      .in('project_id', ids)
+      .is('sub_project_id', null)
+      .order('position', { ascending: true })
+      .then(({ data }) => {
+        if (!data) return
+        const grouped: Record<string, TileObjective[]> = {}
+        for (const row of data) {
+          if (!grouped[row.project_id]) grouped[row.project_id] = []
+          if (grouped[row.project_id].length < 3) {
+            grouped[row.project_id].push({ id: row.id, title: row.title, completed: row.completed })
+          }
+        }
+        setCardObjectives(grouped)
+      })
+  }, [projects])
 
   // Reset class tab and stat filter when nav changes
   useEffect(() => { setClassTab('all'); setSearch(''); setActiveStatFilter(null) }, [navFilter])
@@ -632,9 +704,6 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
             {search && <X size={13} color="#555" style={{ cursor: 'pointer', flexShrink: 0 }} onClick={e => { e.stopPropagation(); setSearch('') }} />}
           </div>
         </div>
-
-        {/* ── StatsHeader (rollup summary bar) ── */}
-        <StatsHeader />
 
         {/* ── Elevated stat cards grid ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
@@ -797,7 +866,7 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
                         const rollup = rollups[p.id]
                         return (
                           <div key={p.id} style={{ position: 'relative' }}>
-                            <ProjectTile project={p} onOpen={() => onOpen(p)} onDelete={() => deleteProject(p.id)} />
+                            <ProjectTile project={p} onOpen={() => onOpen(p)} onDelete={() => deleteProject(p.id)} rollup={rollup} objectives={cardObjectives[p.id]} />
                             <RollupBadge rollup={rollup} padding="0 20px 10px" marginTop={-6} />
                             <div style={{ position: 'absolute', top: 10, right: 10 }} onClick={e => e.stopPropagation()}>
                               <ProjectCardActions project={p} />
@@ -821,7 +890,7 @@ export function ProjectList({ onOpen, filter: navFilter }: ProjectListProps) {
               const rollup = rollups[p.id]
               return (
                 <div key={p.id} style={{ position: 'relative' }}>
-                  <ProjectTile project={p} onOpen={() => onOpen(p)} onDelete={() => deleteProject(p.id)} />
+                  <ProjectTile project={p} onOpen={() => onOpen(p)} onDelete={() => deleteProject(p.id)} rollup={rollup} objectives={cardObjectives[p.id]} />
                   <RollupBadge rollup={rollup} />
                   <div style={{ position: 'absolute', top: 10, right: 10 }} onClick={e => e.stopPropagation()}>
                     <ProjectCardActions project={p} />

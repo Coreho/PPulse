@@ -17,6 +17,7 @@ import {
 } from '@phosphor-icons/react'
 import { useProjectStore } from '@/store/projectStore'
 import { useObjectivesStore } from '@/store/objectivesStore'
+import { useCardStore } from '@/store/cardStore'
 import { CLASS_META, getClassAccent } from '@/projects/ProjectList'
 import type { ProjectClassification, ProjectStatus } from '@/db/types'
 
@@ -200,6 +201,28 @@ export function ProjectWizard({ isOpen, onClose }: { isOpen: boolean; onClose: (
         if (obj.title.trim()) {
           await addObjective(newProject.id, obj.title.trim())
         }
+      }
+      const { addCard } = useCardStore.getState()
+      for (let i = 0; i < state.objectives.length; i++) {
+        const obj = state.objectives[i]
+        if (!obj.title.trim()) continue
+        await addCard({
+          project_id: newProject.id,
+          sub_project_id: null,
+          type: 'software',
+          title: obj.title.trim(),
+          description: null,
+          column: 'backlog',
+          position: i,
+          scratchpad_tag: null,
+          meta: null,
+          blocked_by: [],
+          bom_item_id: null,
+          machine_id: null,
+          target_timestamp: null,
+          status_flags: [],
+          machine_session_start: null,
+        })
       }
       setActiveProject(newProject)
       onClose()

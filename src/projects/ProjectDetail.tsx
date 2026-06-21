@@ -44,15 +44,67 @@ const inputStyle: React.CSSProperties = {
 
 const selectStyle: React.CSSProperties = { ...inputStyle, cursor: 'pointer' }
 
+// ── Overview tab helpers ───────────────────────────────────────────────────────
+
+const SECTION_LABEL: React.CSSProperties = {
+  fontSize: '11px',
+  color: '#555',
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  fontWeight: 600,
+  fontFamily: 'var(--font-sans)',
+  margin: '0 0 10px',
+}
+
+const META_CARD: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.04)',
+  border: '1px solid rgba(255,255,255,0.07)',
+  borderRadius: '10px',
+  padding: '12px 14px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '8px',
+}
+
+const STATUS_CONFIG: Record<ProjectStatus, { label: string; color: string; bg: string }> = {
+  planning:  { label: 'Planning',  color: '#888',    bg: 'rgba(136,136,136,0.15)' },
+  active:    { label: 'Active',    color: '#4ade80', bg: 'rgba(74,222,128,0.15)' },
+  paused:    { label: 'Paused',    color: '#fbbf24', bg: 'rgba(251,191,36,0.15)' },
+  completed: { label: 'Completed', color: '#60a5fa', bg: 'rgba(96,165,250,0.15)' },
+  cancelled: { label: 'Cancelled', color: '#f87171', bg: 'rgba(248,113,113,0.15)' },
+}
+
+function OverviewProgressRing({ pct, accent }: { pct: number; accent: string }) {
+  const r = 44, circ = 2 * Math.PI * r
+  return (
+    <svg width={108} height={108} viewBox="0 0 108 108" style={{ display: 'block' }}>
+      <circle cx={54} cy={54} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={10} />
+      <circle
+        cx={54} cy={54} r={r} fill="none" stroke={accent} strokeWidth={10}
+        strokeDasharray={`${circ * pct / 100} ${circ}`}
+        strokeDashoffset={circ * 0.25}
+        strokeLinecap="round"
+        style={{ transition: 'stroke-dasharray 0.4s ease' }}
+      />
+      <text x={54} y={50} textAnchor="middle" fill="#fff" fontSize={18} fontWeight="bold" fontFamily="Archivo Black, sans-serif">{pct}%</text>
+      <text x={54} y={67} textAnchor="middle" fill="#666" fontSize={10} fontFamily="Inter, sans-serif">Complete</text>
+    </svg>
+  )
+}
+
 // ── Overview tab ──────────────────────────────────────────────────────────────
 
 function OverviewTab({ project }: { project: Project }) {
   const { updateProject } = useProjectStore()
+  const { objectives, loading: objLoading, loadObjectives, toggleObjective } = useObjectivesStore()
+
   const [name, setName] = useState(project.name)
   const [description, setDescription] = useState(project.description ?? '')
   const [classification, setClassification] = useState<ProjectClassification | ''>(project.classification ?? '')
   const [status, setStatus] = useState<ProjectStatus>(project.status ?? 'planning')
   const [estDate, setEstDate] = useState(project.estimated_completion_date ?? '')
+  const [editingDesc, setEditingDesc] = useState(false)
+  const [editingName, setEditingName] = useState(false)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -63,83 +115,293 @@ function OverviewTab({ project }: { project: Project }) {
     setEstDate(project.estimated_completion_date ?? '')
   }, [project.id])
 
-  const handleSave = async () => {
+  useEffect(() => { loadObjectives(project.id) }, [project.id, loadObjectives])
+
+  const done = objectives.filter(o => o.completed).length
+  const total = objectives.length
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100)
+
+  const accent = getClassAccent(classification || null)
+
+  const handleSave = async (overrides?: Partial<Parameters<typeof updateProject>[1]>) => {
     await updateProject(project.id, {
       name: name.trim() || project.name,
       description: description.trim() || null,
       classification: classification || null,
       status,
       estimated_completion_date: estDate || null,
+      ...overrides,
     })
     setSaved(true)
-    setTimeout(() => setSaved(false), 1500)
+    setTimeout(() => setSaved(false), 1200)
+  }
+
+  const handleStatusChange = (s: ProjectStatus) => {
+    setStatus(s)
+    void handleSave({ status: s })
+  }
+
+  const handleClassChange = (c: ProjectClassification | '') => {
+    setClassification(c)
+    void handleSave({ classification: c || null })
+  }
+
+  const handleEstDateChange = (d: string) => {
+    setEstDate(d)
+    void handleSave({ estimated_completion_date: d || null })
   }
 
   return (
-    <div style={{ maxWidth: '560px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Project Name</label>
-        <input style={inputStyle} value={name} onChange={e => setName(e.target.value)} />
+    <div style={{ maxWidth: '680px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+      {/* ── Project header ── */}
+      <div style={{
+        background: 'rgba(255,255,255,0.03)',
+        border: '1px solid rgba(255,255,255,0.07)',
+        borderLeft: `3px solid ${accent}`,
+        borderRadius: '14px',
+        padding: '18px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+      }}>
+        {editingName ? (
+          <input
+            autoFocus
+            style={{
+              flex: 1, background: 'rgba(255,255,255,0.06)', border: `1px solid ${accent}55`,
+              borderRadius: '8px', padding: '6px 10px', fontSize: '20px', fontWeight: 700,
+              color: '#fff', outline: 'none', fontFamily: 'var(--font-display)',
+            }}
+            value={name}
+            onChange={e => setName(e.target.value)}
+            onBlur={() => { setEditingName(false); void handleSave({ name: name.trim() || project.name }) }}
+            onKeyDown={e => { if (e.key === 'Enter') { setEditingName(false); void handleSave({ name: name.trim() || project.name }) } if (e.key === 'Escape') { setName(project.name); setEditingName(false) } }}
+          />
+        ) : (
+          <h2 style={{
+            flex: 1, fontFamily: 'var(--font-display)', fontSize: '22px', color: '#fff',
+            margin: 0, lineHeight: 1.2, cursor: 'pointer',
+          }}
+            onClick={() => setEditingName(true)}
+          >
+            {name}
+          </h2>
+        )}
+        {classification && (
+          <span style={{
+            fontSize: '10px', fontWeight: 700, padding: '3px 9px', borderRadius: '999px',
+            background: `${accent}18`, color: accent, flexShrink: 0,
+          }}>
+            {classification}
+          </span>
+        )}
+        <span style={{
+          fontSize: '10px', fontWeight: 700, padding: '3px 9px', borderRadius: '999px',
+          background: STATUS_CONFIG[status]?.bg ?? 'rgba(255,255,255,0.07)',
+          color: STATUS_CONFIG[status]?.color ?? '#888',
+          flexShrink: 0,
+        }}>
+          {STATUS_CONFIG[status]?.label ?? status}
+        </span>
+        <button
+          type="button"
+          onClick={() => setEditingName(true)}
+          aria-label="Edit name"
+          style={{ background: 'none', border: 'none', color: '#444', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+        >
+          <PencilSimple size={14} />
+        </button>
+        {saved && (
+          <span style={{ fontSize: '11px', color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Check size={12} weight="bold" /> Saved
+          </span>
+        )}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Description</label>
-        <textarea
-          style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }}
-          value={description}
-          onChange={e => setDescription(e.target.value)}
-          placeholder="What is this project?"
-        />
-      </div>
+      {/* ── Two-column: ring + metadata ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '124px 1fr', gap: '16px', alignItems: 'start' }}>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Classification</label>
-          <select style={selectStyle} value={classification} onChange={e => setClassification(e.target.value as ProjectClassification | '')}>
-            <option value="">— None —</option>
-            <option value="home">Home</option>
-            <option value="software">Software</option>
-            <option value="hardware">Hardware</option>
-            <option value="mixed">Mixed</option>
-            <option value="research">Research</option>
-            <option value="other">Other</option>
-          </select>
+        {/* Progress ring */}
+        <div style={{
+          ...META_CARD,
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px',
+          minHeight: '140px',
+        }}>
+          <OverviewProgressRing pct={pct} accent={accent} />
+          {total > 0 && (
+            <span style={{ fontSize: '11px', color: '#555', marginTop: '4px' }}>
+              {done}/{total} objectives
+            </span>
+          )}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Status</label>
-          <select style={selectStyle} value={status} onChange={e => setStatus(e.target.value as ProjectStatus)}>
-            <option value="planning">Planning</option>
-            <option value="active">Active</option>
-            <option value="paused">Paused</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+        {/* Metadata cards column */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+
+          {/* Classification */}
+          <div style={META_CARD}>
+            <span style={SECTION_LABEL}>Classification</span>
+            <select
+              style={{
+                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '8px', padding: '6px 10px', fontSize: '12px',
+                color: accent, outline: 'none', cursor: 'pointer',
+                fontFamily: 'var(--font-sans)', fontWeight: 600,
+              }}
+              value={classification}
+              onChange={e => handleClassChange(e.target.value as ProjectClassification | '')}
+            >
+              <option value="">— None —</option>
+              <option value="home">Home</option>
+              <option value="software">Software</option>
+              <option value="hardware">Hardware</option>
+              <option value="mixed">Mixed</option>
+              <option value="research">Research</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          {/* Status pills */}
+          <div style={META_CARD}>
+            <span style={SECTION_LABEL}>Status</span>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {(Object.entries(STATUS_CONFIG) as [ProjectStatus, typeof STATUS_CONFIG[ProjectStatus]][]).map(([s, cfg]) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => handleStatusChange(s)}
+                  style={{
+                    padding: '4px 11px', borderRadius: '999px', fontSize: '11px', fontWeight: 600,
+                    cursor: 'pointer', transition: 'all 0.15s', border: 'none',
+                    background: status === s ? cfg.bg : 'rgba(255,255,255,0.04)',
+                    color: status === s ? cfg.color : '#444',
+                    outline: status === s ? `1px solid ${cfg.color}55` : '1px solid rgba(255,255,255,0.07)',
+                  }}
+                >
+                  {cfg.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Est. completion */}
+          <div style={META_CARD}>
+            <span style={SECTION_LABEL}>Est. Completion</span>
+            <input
+              type="date"
+              style={{
+                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '8px', padding: '6px 10px', fontSize: '12px',
+                color: '#ccc', outline: 'none', fontFamily: 'var(--font-sans)',
+                colorScheme: 'dark',
+              }}
+              value={estDate}
+              onChange={e => handleEstDateChange(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Estimated Completion</label>
-        <input type="date" style={inputStyle} value={estDate} onChange={e => setEstDate(e.target.value)} />
+      {/* ── Objectives & KRs ── */}
+      <div style={{
+        background: 'rgba(255,255,255,0.02)',
+        border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: '14px',
+        padding: '18px 20px',
+      }}>
+        {/* Section header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <h3 style={{ ...SECTION_LABEL, margin: 0 }}>Objectives &amp; KRs</h3>
+          <span style={{ fontSize: '11px', color: '#444' }}>{done} / {total} complete</span>
+        </div>
+
+        {/* Progress bar */}
+        {total > 0 && (
+          <div style={{ height: '4px', background: 'rgba(255,255,255,0.07)', borderRadius: '2px', overflow: 'hidden', marginBottom: '14px' }}>
+            <div style={{ height: '100%', width: `${pct}%`, background: accent, borderRadius: '2px', transition: 'width 0.4s' }} />
+          </div>
+        )}
+
+        {/* Objectives list */}
+        {objLoading && total === 0 ? (
+          <p style={{ fontSize: '12px', color: '#444', margin: 0 }}>Loading…</p>
+        ) : total === 0 ? (
+          <p style={{ fontSize: '12px', color: '#333', margin: 0, textAlign: 'center', padding: '16px 0' }}>
+            No objectives yet — add them in the Objectives tab
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {objectives.map(obj => (
+              <div key={obj.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => void toggleObjective(obj.id)}
+                  aria-label={obj.completed ? 'Mark incomplete' : 'Mark complete'}
+                  style={{
+                    flexShrink: 0, width: '17px', height: '17px', borderRadius: '4px',
+                    border: `2px solid ${obj.completed ? accent : 'rgba(255,255,255,0.15)'}`,
+                    background: obj.completed ? accent : 'transparent',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  {obj.completed && <Check size={10} weight="bold" style={{ color: '#09090b' }} />}
+                </button>
+                <span style={{
+                  fontSize: '13px', flex: 1,
+                  color: obj.completed ? '#444' : '#ccc',
+                  textDecoration: obj.completed ? 'line-through' : 'none',
+                }}>
+                  {obj.title}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      <button
-        type="button"
-        onClick={handleSave}
-        style={{
-          alignSelf: 'flex-start',
-          display: 'flex', alignItems: 'center', gap: '6px',
-          padding: '7px 16px', fontSize: '12px', fontWeight: 600,
-          color: '#09090b',
-          backgroundColor: saved ? 'var(--color-success)' : 'var(--color-accent)',
-          border: 'none', borderRadius: '0.375rem', cursor: 'pointer',
-          transition: 'background-color 0.2s',
-        }}
-      >
-        {saved ? <><Check size={13} weight="bold" /> Saved</> : 'Save Changes'}
-      </button>
+      {/* ── Description ── */}
+      <div style={{
+        background: 'rgba(255,255,255,0.02)',
+        border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: '14px',
+        padding: '18px 20px',
+      }}>
+        <h3 style={{ ...SECTION_LABEL, margin: '0 0 10px' }}>Description</h3>
+        {editingDesc ? (
+          <textarea
+            autoFocus
+            style={{
+              width: '100%', background: 'rgba(255,255,255,0.05)',
+              border: `1px solid ${accent}44`, borderRadius: '8px',
+              padding: '10px 12px', fontSize: '13px', color: '#ccc',
+              outline: 'none', fontFamily: 'var(--font-sans)', resize: 'vertical',
+              minHeight: '80px', boxSizing: 'border-box', lineHeight: 1.6,
+            }}
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            onBlur={() => { setEditingDesc(false); void handleSave({ description: description.trim() || null }) }}
+            onKeyDown={e => { if (e.key === 'Escape') setEditingDesc(false) }}
+          />
+        ) : (
+          <p
+            onClick={() => setEditingDesc(true)}
+            style={{
+              fontSize: '13px', color: description ? '#888' : '#333',
+              margin: 0, lineHeight: 1.6, cursor: 'text',
+              minHeight: '40px',
+              fontStyle: description ? 'normal' : 'italic',
+            }}
+          >
+            {description || 'Click to add a description…'}
+          </p>
+        )}
+      </div>
 
-      <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '16px' }}>
+      {/* ── Sub-projects ── */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: '20px' }}>
         <SubProjectsSection projectId={project.id} />
       </div>
     </div>
