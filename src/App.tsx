@@ -12,6 +12,7 @@ import { ProjectList } from '@/projects/ProjectList'
 import { ProjectDetail } from '@/projects/ProjectDetail'
 import { TodoPanel } from '@/projects/TodoPanel'
 import { ProjectWizard } from '@/projects/ProjectWizard'
+import { ChatPanel } from '@/ai/ChatPanel'
 import type { Database, NavFilter } from '@/db/types'
 
 type Project = Database['public']['Tables']['projects']['Row']
@@ -224,6 +225,10 @@ export default function App() {
     prevProjectRef.current = false
     setActiveProject(project)
   }
+  const handleOpenById = (id: string) => {
+    const p = useProjectStore.getState().projects.find(x => x.id === id)
+    if (p) handleOpen(p)
+  }
   const handleBack = () => {
     prevProjectRef.current = true
     setActiveProject(null)
@@ -294,6 +299,7 @@ export default function App() {
           )}
         </div>
 
+        <ChatPanel onOpenProject={handleOpenById} isMobile />
         <ProjectWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} />
       </ToastProvider>
     )
@@ -384,6 +390,7 @@ export default function App() {
         </button>
       )}
 
+      <ChatPanel onOpenProject={handleOpenById} />
       <ProjectWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} />
     </ToastProvider>
   )
