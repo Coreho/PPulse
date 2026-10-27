@@ -85,3 +85,10 @@ export const useBomStore = create<BomStore>((set, get) => ({
     await get().updateItem(id, { quantity_stock: newStock })
   },
 }))
+
+/** How many more units of each item must be bought to cover what's required. */
+export function shortfall(items: BomItem[]) {
+  return items
+    .filter(i => i.quantity_stock < i.quantity_required)
+    .map(i => ({ id: i.id, name: i.name, missing: i.quantity_stock - i.quantity_required }))
+}
